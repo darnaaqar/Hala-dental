@@ -1,0 +1,2 @@
+# Mark all jar files as binary to prevent CRLF line ending normalization which corrupts bytecodes
+*.jar binary
