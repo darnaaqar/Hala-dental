@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Plus Jakarta Sans", sans-serif;
+  
+  --color-primary-brand: #0058bc;
+  --color-on-primary-brand: #ffffff;
+  --color-primary-container-brand: #0070eb;
+  --color-on-primary-container-brand: #fefcff;
+  
+  --color-secondary-brand: #006b5a;
+  --color-on-secondary-brand: #ffffff;
+  --color-secondary-container-brand: #54f8d7;
+  --color-on-secondary-container-brand: #00705e;
+  
+  --color-bg-brand: #f7faf9;
+  --color-surface-brand: #ffffff;
+  --color-surface-container-brand: #ebeeed;
+  --color-surface-container-high-brand: #e6e9e8;
+  --color-on-surface-brand: #181c1c;
+  --color-on-surface-variant-brand: #414755;
+  --color-error-container-brand: #ffdad6;
+  --color-on-error-container-brand: #93000a;
+}
+
+/* Custom scrollbars */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Glassomorphism Card Styling */
+.glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-card-dark {
+  background: rgba(24, 28, 28, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Base custom interactive states */
+.active-scale:active {
+  transform: scale(0.96);
+  transition: transform 0.15s ease;
+}
+
+body {
+  background-color: #0d1117;
+  color: #c9d1d9;
+  font-family: "IBM Plex Sans", sans-serif;
+}
