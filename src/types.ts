@@ -31,21 +31,21 @@ export interface SubCategory {
 }
 
 export interface Clinic {
-  id: number;
+  id: number | string;
   name: string;
   description: string;
   address: string;
   phone: string;
   logo: string;
-  category_id?: number;
-  sub_category_id?: number;
+  category_id?: number | string;
+  sub_category_id?: number | string;
   cover_image: string;
   created_at: string;
 }
 
 export interface Dentist {
-  id: number;
-  clinic_id: number;
+  id: number | string;
+  clinic_id: number | string;
   name: string;
   bio: string;
   image: string;
@@ -56,15 +56,15 @@ export interface Dentist {
 }
 
 export interface Service {
-  id: number;
+  id: number | string;
   name: string;
   description: string;
   price: number;
   duration?: number; // in minutes
-  clinic_id: number;
+  clinic_id: number | string;
   is_available: boolean;
   image: string;
-  category_id?: number;
+  category_id?: number | string;
   discount_price?: number;
   target_audience?: string;
   warranty_months: number;
@@ -73,8 +73,8 @@ export interface Service {
 }
 
 export interface Offer {
-  id: number;
-  clinic_id: number;
+  id: number | string;
+  clinic_id: number | string;
   title: string;
   description: string;
   discount: string;
@@ -84,7 +84,7 @@ export interface Offer {
 }
 
 export interface User {
-  id: number;
+  id: number | string;
   name: string;
   phone: string;
   city?: string;
@@ -96,19 +96,19 @@ export interface User {
 }
 
 export interface Favorite {
-  id: number;
-  user_id: number;
-  clinic_id?: number;
-  dentist_id?: number;
+  id: number | string;
+  user_id: number | string;
+  clinic_id?: number | string;
+  dentist_id?: number | string;
   notes?: string;
   created_at: string;
 }
 
 export interface Appointment {
-  id: number;
-  user_id: number;
-  clinic_id: number;
-  dentist_id?: number;
+  id: number | string;
+  user_id: number | string;
+  clinic_id: number | string;
+  dentist_id?: number | string;
   date: string;
   time: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
@@ -116,11 +116,11 @@ export interface Appointment {
 }
 
 export interface Contact {
-  id: number;
+  id: number | string;
   name: string;
   phone: string;
   message: string;
-  clinic_id: number;
+  clinic_id: number | string;
   date: string;
   status: 'new' | 'in_progress' | 'resolved';
   contact_reason: string;
@@ -134,8 +134,8 @@ export interface Contact {
 }
 
 export interface Notification {
-  id: number;
-  user_id: number;
+  id: number | string;
+  user_id: number | string;
   title: string;
   message: string;
   is_read: boolean;
