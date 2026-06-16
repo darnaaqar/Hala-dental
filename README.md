@@ -89,4 +89,24 @@ We have fully integrated Ionic Capacitor for native Android builds, and configur
   4. Click on the most recent run (e.g., matching your latest commit message).
   5. Scroll down to the bottom of that run's summary page to find the **"Artifacts"** section.
   6. You will see a named package: **`Hala-Dent-APK`**. Click it to download the ZIP file containing your installable Android `.apk` file!
-  7. Extract the ZIP, transfer the `.apk` to your phone, and install it!
+
+### 🛠️ Android APK Installation & Troubleshooting Guide
+If you encounter **"App not installed"** or are having trouble opening/installing the bundle on your device, follow these sequential steps to resolve them:
+
+1. **Unzip the Downloaded Package (Mandatory)**:
+   - When you download the compiled artifact from GitHub Actions, it downloads as **`Hala-Dent-APK.zip`** (a compiled Zip archive).
+   - **Do not** attempt to rename `.zip` directly to `.apk` or run the `.zip` file on Android; this will trigger an install failure.
+   - Use a file manager or extractor on your computer/phone to **Extract the ZIP file** first. You will get the true installable file: **`app-debug.apk`**.
+
+2. **Uninstall Old/Previous Versions (Critical)**:
+   - If you already have a previous version of the "Hala Dent" app or any app with the package ID `com.haladent.app` installed on your phone, Android will prevent the installation of the new build due to a **Signature Mismatch / Package Conflict**.
+   - Go to your mobile phone's Settings -> Apps, search for any existing **Hala Dent** or **com.haladent.app** installation, and **completely uninstall it** first. Then attempt the installation of the new `app-debug.apk`.
+
+3. **Enable "Install from Unknown Sources"**:
+   - Because this APK is custom-built and not downloaded from the official Google Play Store, Android security defaults will block it.
+   - When opening **`app-debug.apk`** with your browser or file explorer, click on **Settings** in the popup and toggle **"Allow from this source"** to permit the installation.
+
+4. **Bypass Google Play Protect Warnings**:
+   - Google Play Protect might display a dialog message saying *"Blocked by Play Protect" / "Unrecognized Developer"*.
+   - Click the **"More Details"** drop-down arrow inside that warning popup.
+   - Tap **"Install Anyway"** to safely proceed with launching Hala Dent on your phone!

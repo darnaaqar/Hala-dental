@@ -1,6 +1,6 @@
 {
   "name": "Hala Dent",
-  "description": "Premium clinical dental advertising and engagement application with live Supabase schema persistence inspector.",
+  "description": "Premium clinical dental mobile application with localized multi-language engagement for Hala Dent Clinics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

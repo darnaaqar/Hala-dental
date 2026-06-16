@@ -781,204 +781,79 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-gray-100 flex flex-col selection:bg-cyan-500 selection:text-white">
+    <div 
+      className="min-h-screen bg-[#f7faf9] text-[#181c1c] flex flex-col relative font-sans selection:bg-blue-200"
+      dir={lang === 'en' ? 'ltr' : 'rtl'}
+    >
       {/* Toast message channel */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-[9999] animate-bounce bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-medium py-3 px-5 rounded-2xl shadow-xl border border-emerald-400 flex items-center gap-3">
-          <CheckCircle className="w-5 h-5 text-white" />
-          <span>{toastMessage}</span>
+        <div className="fixed top-8 left-4 right-4 z-[9999] animate-bounce bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-medium py-3 px-5 rounded-2xl shadow-xl border border-emerald-400 flex items-center gap-3 max-w-md mx-auto">
+          <CheckCircle className="w-5 h-5 text-white shrink-0" />
+          <span className="text-xs">{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Header / Brand Header */}
-      <header className="bg-slate-900/60 border-b border-slate-800 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Sparkles className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-headline font-extrabold text-2xl tracking-tight bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">
-                  Hala Dent Applet
-                </h1>
-                <span className="text-[10px] bg-slate-800 text-cyan-400 uppercase tracking-widest px-2 py-0.5 rounded-md font-mono border border-cyan-800">
-                  Android Live SDK
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-sans">
-                Interactive Directory &amp; Supabase Database persistence emulator
-              </p>
-            </div>
+      {/* App Header bar */}
+      <header className="bg-white/90 backdrop-blur-md px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <Home className="w-5 h-5 text-blue-600" />
+          </div>
+          <h2 className="font-headline font-extrabold text-base text-blue-600 tracking-tight">
+            {t.title}
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Quick Language Toggle Selector directly inside header */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-full text-xs shrink-0 select-none border border-slate-200">
+            <button
+              onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
+              className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              عربي
+            </button>
+            <button
+              onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
+              className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              کوردی
+            </button>
           </div>
 
-          {/* View Mode & Language Selection Center */}
-          <div className="flex flex-wrap items-center gap-4">
-            {/* View Mode Toggle */}
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
-              <button
-                onClick={() => {
-                  setViewMode('app');
-                  showToast('Swapped to Premium Focused Screen');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all duration-150 active-scale select-none ${viewMode === 'app' ? 'bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                📱 App Preview
-              </button>
-              <button
-                onClick={() => {
-                  setViewMode('dual');
-                  showToast('Swapped to Full Stack DB Inspector Dev mode');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all duration-150 active-scale select-none ${viewMode === 'dual' ? 'bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                ⚡ Developer DB Terminal
-              </button>
-            </div>
-
-            {/* Viewport Dynamic Fitting Scale Controller */}
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs text-slate-400 gap-1 select-none shrink-0">
-              <span className="pl-2 pr-1 font-semibold text-[10px] uppercase font-mono tracking-wider text-slate-500 hidden sm:inline">📏 Scale Phone:</span>
-              {[
-                { val: 1.0, lab: '100%' },
-                { val: 0.9, lab: '90%' },
-                { val: 0.85, lab: '85%' },
-                { val: 0.8, lab: '80%' },
-                { val: 0.75, lab: '75%' }
-              ].map((sc) => (
-                <button
-                  key={sc.val}
-                  onClick={() => {
-                    setAppScale(sc.val);
-                    showToast(`Scaled phone workspace to ${sc.lab}`);
-                  }}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all duration-100 ${appScale === sc.val ? 'bg-blue-600/90 text-white shadow-sm' : 'hover:bg-slate-900 text-slate-400 hover:text-slate-200'}`}
-                >
-                  {sc.lab}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-1.5 text-xs">
-              <button
-                onClick={() => { setLang('en'); showToast('Language swapped to English LTR'); }}
-                className={`px-3 py-1.5 rounded-full font-bold active-scale transition-all ${lang === 'en' ? 'bg-blue-600/20 text-blue-400 border border-blue-500' : 'bg-slate-800 text-slate-400 hover:bg-slate-705'}`}
-              >
-                EN
-              </button>
-              <button
-                onClick={() => { setLang('ar'); showToast('Language swapped to Arabic RTL'); }}
-                className={`px-3 py-1.5 rounded-full font-bold active-scale transition-all ${lang === 'ar' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500' : 'bg-slate-800 text-slate-400 hover:bg-slate-705'}`}
-              >
-                العربية
-              </button>
-              <button
-                onClick={() => { setLang('ku'); showToast('Language swapped to Kurdish RTL'); }}
-                className={`px-3 py-1.5 rounded-full font-bold active-scale transition-all ${lang === 'ku' ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500' : 'bg-slate-800 text-slate-400 hover:bg-slate-705'}`}
-              >
-                کوردی
-              </button>
-            </div>
-          </div>
+          {/* Notification Icon Badge */}
+          <button
+            onClick={() => {
+              setActiveTab('more');
+              showToast('Viewing Patient Notifications');
+            }}
+            className="p-2 hover:bg-slate-100 rounded-full text-blue-600 active-scale relative shrink-0"
+          >
+            <Bell className="w-5 h-5" />
+            {notificationsTable.some(n => !n.is_read) && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping"></span>
+            )}
+          </button>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className={`max-w-7xl mx-auto px-6 py-6 flex-1 w-full transition-all duration-300 ${viewMode === 'app' ? 'flex flex-col items-center justify-center' : 'grid grid-cols-1 lg:grid-cols-12 gap-8 items-start'}`}>
-        
-        {/* ================= COLUMN 1: INTERACTIVE SMARTPHONE EMULATOR (Col-span-5) ================= */}
-        <section className={`${viewMode === 'app' ? 'w-full max-w-[440px] py-4' : 'lg:col-span-12 xl:col-span-5'} flex flex-col items-center relative`}>
-          {viewMode === 'app' && (
-            <div className="absolute inset-0 -z-10 select-none overflow-hidden pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-blue-500/5 rounded-full blur-[90px]" />
-              <div className="absolute top-1/3 left-1/4 w-[380px] h-[380px] bg-cyan-500/5 rounded-full blur-[100px]" />
-              <div className="absolute bottom-1/3 right-1/4 w-[380px] h-[380px] bg-emerald-500/5 rounded-full blur-[100px]" />
-            </div>
-          )}
-          
-          {/* Viewport Scale Fitting Wrapper */}
-          <div 
-            className="transition-all duration-300 origin-top flex justify-center items-start"
-            style={{ 
-              transform: `scale(${appScale})`, 
-              height: `${780 * appScale}px`,
-              width: `${400 * appScale}px`,
-              marginBottom: `${(appScale - 1) * 780}px`,
-              marginRight: `${(appScale - 1) * 400 + 4}px`
-            }}
+      {/* Interactive Main Body View */}
+      <div className="flex-1 overflow-hidden relative flex flex-col bg-[#f7faf9]">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, x: lang === 'en' ? 12 : -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: lang === 'en' ? -12 : 12 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 text-slate-800"
           >
-            <div className="relative w-[400px] bg-slate-950 rounded-[55px] p-4 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] border-4 border-slate-800 ring-2 ring-slate-900/50">
-            {/* Phone Ear Speaker and Selfie Camera sensors */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-36 bg-slate-950 rounded-b-2xl z-50 flex items-center justify-center gap-1.5">
-              <div className="w-12 h-1 bg-slate-800 rounded-full"></div>
-              <div className="w-2.5 h-2.5 bg-slate-900 rounded-full border border-slate-800"></div>
-            </div>
-
-            {/* Android Dynamic Screen Container */}
-            <div
-              className="bg-[#f7faf9] text-[#181c1c] rounded-[42px] overflow-hidden min-h-[720px] max-h-[720px] flex flex-col relative font-sans shadow-inner selection:bg-blue-200"
-              dir={lang === 'en' ? 'ltr' : 'rtl'}
-            >
-              {/* Emulator Status Bar */}
-              <div className="bg-white/80 backdrop-blur px-6 pt-3 pb-1 flex justify-between items-center text-xs text-[#414755] font-semibold border-b border-slate-100 z-40 select-none">
-                <span>10:26 AM</span>
-                <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                  <span>LTE</span>
-                  <div className="w-4 h-2.5 bg-[#414755] rounded-sm relative p-0.5">
-                    <div className="w-full h-full bg-white rounded-xs"></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Emulator App Header bar */}
-              <header className="bg-white/90 backdrop-blur-md px-5 h-14 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Home className="w-4.5 h-4.5 text-blue-600" />
-                  </div>
-                  <h2 className="font-headline font-extrabold text-base text-blue-600 tracking-tight">
-                    {t.title}
-                  </h2>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {/* Notification Icon Badge */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('more');
-                      showToast('Viewing Patient Notifications');
-                    }}
-                    className="p-1.5 hover:bg-slate-100 rounded-full text-blue-600 active-scale relative"
-                  >
-                    <Bell className="w-4.5 h-4.5" />
-                    {notificationsTable.some(n => !n.is_read) && (
-                      <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping"></span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      showToast('Map locator initiated. Centers near Gulan St, Erbil.');
-                      setActiveTab('clinics');
-                    }}
-                    className="p-1.5 hover:bg-slate-100 rounded-full text-blue-600 active-scale"
-                  >
-                    <Map className="w-4.5 h-4.5" />
-                  </button>
-                </div>
-              </header>
-
-              {/* Emulator Interactive Main Screen Body */}
-              <div className="flex-1 overflow-hidden relative flex flex-col bg-[#f7faf9]">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, x: lang === 'en' ? 12 : -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: lang === 'en' ? -12 : 12 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                    className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 text-slate-800"
-                  >
                 
                 {/* 1. VIEW TAB: CLINICS / HOME VIEW */}
                 {activeTab === 'clinics' && renderUnifiedHome()}
@@ -1987,7 +1862,7 @@ export default function App() {
                           <select
                             value={contactForm.reason}
                             onChange={(e) => setContactForm({ ...contactForm, reason: e.target.value })}
-                            className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:ring-1 rounded-xl text-xs"
+                            className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:ring-1 rounded-xl text-xs font-semibold"
                           >
                             <option value="General Inquiry">General Inquiry</option>
                             <option value="Severe Tooth Pain">Severe Tooth Pain</option>
@@ -2003,7 +1878,7 @@ export default function App() {
                             value={contactForm.message}
                             onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
                             rows={2}
-                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-1 rounded-xl text-xs"
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-1 rounded-xl text-xs font-medium"
                           />
                         </div>
 
@@ -2017,12 +1892,12 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
-              {/* Emulator Interactive Android Bottom Navbar */}
-              <nav className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md shadow-[0_-4px_15px_rgba(0,122,255,0.06)] h-16 border-t border-slate-100 flex justify-around items-center px-2 pb-safe select-none z-50">
+              {/* Patient Shell Bottom Navbar */}
+              <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md shadow-[0_-4px_15px_rgba(0,122,255,0.06)] h-16 border-t border-slate-100 flex justify-around items-center px-2 pb-safe select-none z-[49]">
                 <button
                   onClick={() => { setActiveTab('clinics'); setSearchQuery(''); }}
                   className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'clinics' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
@@ -2106,14 +1981,14 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black/60 backdrop-blur-md flex items-end z-[60]"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end justify-center z-[60]"
                   >
                     <motion.div
                       initial={{ y: "100%" }}
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                      className="bg-white rounded-t-[32px] w-full p-5 space-y-4 max-h-[90%] overflow-y-auto"
+                      className="bg-white rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto"
                     >
                       <div className="flex justify-between items-center select-none">
                         <h4 className="font-headline font-extrabold text-sm text-slate-800">
@@ -2196,14 +2071,14 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black/60 backdrop-blur-md flex items-end z-[60]"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end justify-center z-[60]"
                   >
                     <motion.div
                       initial={{ y: "100%" }}
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                      className="bg-white rounded-t-[32px] w-full p-5 space-y-4 max-h-[90%] overflow-y-auto"
+                      className="bg-white rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto"
                     >
                       <div className="flex justify-between items-center select-none">
                         <h4 className="font-headline font-extrabold text-sm text-slate-800">
@@ -2272,455 +2147,7 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-            </div>
           </div>
-          </div>
-        </section>
-
-        {/* ================= COLUMN 2: SUPABASE LIVE Persisted DATABASE INSPECTOR (Col-span-7) ================= */}
-        {viewMode === 'dual' && (
-          <section className="col-span-1 lg:col-span-12 xl:col-span-7 bg-[#161b22] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-          
-          {/* Inspector Header with Tab choices */}
-          <div className="bg-slate-900 border-b border-slate-800 p-4 select-none">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
-                  <Database className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-sans font-extrabold text-sm text-slate-100 flex items-center gap-2">
-                    Supabase DB Inspector
-                    <span className="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-emerald-400 font-mono font-normal">
-                      Postgres engine ACTIVE
-                    </span>
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-sans">
-                    Monitor live transaction inserts, clicks, and appointments written in real-time
-                  </p>
-                </div>
-              </div>
-
-              {/* Admin simulated operation trigger */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const seedApp = appointmentsTable[0];
-                    if (seedApp && seedApp.status === 'pending') {
-                      handleAdminApproveAppointment(seedApp.id);
-                    } else {
-                      showToast('First row already approved, select of emulator to write a new pending appointment!');
-                    }
-                  }}
-                  className="bg-emerald-600 text-white font-sans text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-500 hover:bg-emerald-700 transition-colors active-scale flex items-center gap-1"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-white" />
-                  Simulate Admin Confirmation
-                </button>
-              </div>
-            </div>
-
-            {/* List of 12 Tables conforming to Supabase database scheme script */}
-            <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pt-4 select-none">
-              {[
-                { id: 'appointments', label: 'appointments (RLS)', rows: appointmentsTable.length },
-                { id: 'contacts', label: 'contacts (RLS)', rows: contactsTable.length },
-                { id: 'favorites', label: 'favorites (RLS)', rows: favoritesTable.length },
-                { id: 'notifications', label: 'notifications (RLS)', rows: notificationsTable.length },
-                { id: 'clinics', label: 'clinics (Public Read)', rows: clinicsTable.length },
-                { id: 'dentists', label: 'dentists (Public Read)', rows: dentistsTable.length },
-                { id: 'services', label: 'services (Public Read)', rows: servicesTable.length },
-                { id: 'offers', label: 'offers (Public Read)', rows: offersTable.length },
-                { id: 'categories', label: 'categories', rows: categoriesTable.length },
-                { id: 'sub_categories', label: 'sub_categories', rows: subCategoriesTable.length },
-                { id: 'media', label: 'media', rows: mediaTable.length }
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setInspectorActiveTable(t.id)}
-                  className={`flex-none font-mono text-[10px] px-3 py-1.5 rounded-md transition-all ${inspectorActiveTable === t.id ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold' : 'bg-slate-800/60 text-slate-400 border border-transparent hover:bg-slate-800'}`}
-                >
-                  📁 {t.label}
-                  <span className="ml-1 bg-slate-900 border border-slate-700 px-1 py-0.2 rounded font-sans font-normal text-slate-300">
-                    {t.rows}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Interactive Row Spreadsheet visualization conforming with schema column specs */}
-          <div className="p-4 overflow-x-auto bg-[#0d1117] min-h-[360px] max-h-[460px] overflow-y-auto">
-            {/* Table headers and rows */}
-            <table className="w-full text-left font-mono text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 text-[10px] select-none">
-                  {inspectorActiveTable === 'appointments' && (
-                    <>
-                      <th className="py-2 px-3">id (BigSerial)</th>
-                      <th className="py-2 px-3">user_id</th>
-                      <th className="py-2 px-3">clinic_id</th>
-                      <th className="py-2 px-3">dentist_id</th>
-                      <th className="py-2 px-3">date (Date)</th>
-                      <th className="py-2 px-3">time (Time)</th>
-                      <th className="py-2 px-3">status</th>
-                      <th className="py-2 px-3">created_at</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'contacts' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3 font-sans">phone</th>
-                      <th className="py-2 px-3">message</th>
-                      <th className="py-2 px-3">reason</th>
-                      <th className="py-2 px-3">call_time</th>
-                      <th className="py-2 px-3">status</th>
-                      <th className="py-2 px-3">source</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'favorites' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">user_id</th>
-                      <th className="py-2 px-3">clinic_id</th>
-                      <th className="py-2 px-3">dentist_id</th>
-                      <th className="py-2 px-3">notes</th>
-                      <th className="py-2 px-3 select-none">created_at</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'notifications' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">user_id</th>
-                      <th className="py-2 px-3">title</th>
-                      <th className="py-2 px-3">message</th>
-                      <th className="py-2 px-3 text-center">is_read</th>
-                      <th className="py-2 px-3">type</th>
-                      <th className="py-2 px-3">date</th>
-                      <th className="py-2 px-3 text-right">Actions</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'clinics' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3">phone</th>
-                      <th className="py-2 px-3">address</th>
-                      <th className="py-2 px-3">logo_url</th>
-                      <th className="py-2 px-3">cover_url</th>
-                      <th className="py-2 px-3">created_at</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'dentists' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">clinic_id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3">title</th>
-                      <th className="py-2 px-3">bio</th>
-                      <th className="py-2 px-3">image_url</th>
-                      <th className="py-2 px-3">created_at</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'services' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3">price</th>
-                      <th className="py-2 px-3">duration (min)</th>
-                      <th className="py-2 px-3">warranty_months</th>
-                      <th className="py-2 px-3">consultation_required</th>
-                      <th className="py-2 px-3">is_available</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'offers' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">clinic_id</th>
-                      <th className="py-2 px-3">title</th>
-                      <th className="py-2 px-3">discount</th>
-                      <th className="py-2 px-3">expiry_date</th>
-                      <th className="py-2 px-3">image_path</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'categories' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3">slug</th>
-                      <th className="py-2 px-3">total_clicks</th>
-                      <th className="py-2 px-3">is_active</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'sub_categories' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">category_id</th>
-                      <th className="py-2 px-3">name</th>
-                      <th className="py-2 px-3">is_featured</th>
-                      <th className="py-2 px-3">created_at</th>
-                    </>
-                  )}
-                  {inspectorActiveTable === 'media' && (
-                    <>
-                      <th className="py-2 px-3">id</th>
-                      <th className="py-2 px-3">clinic_id</th>
-                      <th className="py-2 px-3">file_path</th>
-                      <th className="py-2 px-3">file_type</th>
-                      <th className="py-2 px-3">dimensions</th>
-                      <th className="py-2 px-3">is_public</th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {/* RENDERING APPOINTMENTS */}
-                {inspectorActiveTable === 'appointments' && appointmentsTable.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`transition-colors text-slate-300 hover:bg-slate-800/20 ${highlightedRowId === `appointments-${row.id}` ? 'bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30' : ''}`}
-                  >
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">user_{row.user_id}</td>
-                    <td className="py-3 px-3">clinic_{row.clinic_id}</td>
-                    <td className="py-3 px-3">dentist_{row.dentist_id || 'NULL'}</td>
-                    <td className="py-3 px-3 text-slate-200">{row.date}</td>
-                    <td className="py-3 px-3 font-mono">{row.time}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${row.status === 'confirmed' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}`}>
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-[10px] text-slate-500">{row.created_at.slice(0, 10)}</td>
-                    <td className="py-3 px-3 text-right space-x-1 whitespace-nowrap">
-                      {row.status === 'pending' && (
-                        <button
-                          onClick={() => handleAdminApproveAppointment(row.id)}
-                          className="px-2 py-1 bg-emerald-600/30 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded text-[10px] font-bold"
-                        >
-                          Confirm
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteRow('appointments', row.id)}
-                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded"
-                        title="Delete query row"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* RENDERING CONTACTS TABLE */}
-                {inspectorActiveTable === 'contacts' && contactsTable.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`transition-colors hover:bg-slate-800/10 ${highlightedRowId === `contacts-${row.id}` ? 'bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30' : ''}`}
-                  >
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3 font-sans text-slate-200 font-medium">{row.name}</td>
-                    <td className="py-3 px-3 select-all tracking-wider text-slate-300 font-sans">{row.phone}</td>
-                    <td className="py-3 px-3 text-[11px] text-slate-400 max-w-[150px] truncate" title={row.message}>{row.message}</td>
-                    <td className="py-3 px-3 text-cyan-400">{row.contact_reason}</td>
-                    <td className="py-3 px-3 text-slate-400 text-[10px]">{row.preferred_call_time || 'Anytime'}</td>
-                    <td className="py-3 px-3">
-                      <span className="bg-blue-950 text-blue-400 border border-blue-800 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold">
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-slate-500 text-[10px]">{row.source || 'advert'}</td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => handleDeleteRow('contacts', row.id)}
-                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* RENDERING FAVORITES */}
-                {inspectorActiveTable === 'favorites' && favoritesTable.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`transition-colors hover:bg-slate-800/10 ${highlightedRowId === `favorites-${row.id}` ? 'bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30' : ''}`}
-                  >
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">user_{row.user_id}</td>
-                    <td className="py-3 px-3 text-slate-400">{row.clinic_id ? `clinic_${row.clinic_id}` : 'NULL'}</td>
-                    <td className="py-3 px-3 font-sans text-amber-500">{row.dentist_id ? `dentist_${row.dentist_id}` : 'NULL'}</td>
-                    <td className="py-3 px-3 text-[11px] text-slate-400 max-w-[140px] truncate" title={row.notes}>{row.notes || 'NULL'}</td>
-                    <td className="py-3 px-3 text-slate-500 text-[10px] select-all">{row.created_at.slice(0, 10)}</td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => handleDeleteRow('favorites', row.id)}
-                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* RENDERING NOTIFICATIONS */}
-                {inspectorActiveTable === 'notifications' && notificationsTable.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`transition-colors hover:bg-slate-800/10 ${highlightedRowId === `notifications-${row.id}` ? 'bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30' : ''}`}
-                  >
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">user_{row.user_id}</td>
-                    <td className="py-3 px-3 font-bold text-slate-200">{row.title}</td>
-                    <td className="py-3 px-3 text-slate-400 select-all max-w-[180px] truncate" title={row.message}>{row.message}</td>
-                    <td className="py-3 px-3 text-center">{row.is_read ? 'true' : 'false'}</td>
-                    <td className="py-3 px-3"><span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{row.type}</span></td>
-                    <td className="py-3 px-3 text-slate-500 text-[10px]">{row.date.slice(11, 16)}</td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => handleDeleteRow('notifications', row.id)}
-                        className="p-1 hover:text-rose-500 hover:bg-rose-500/10 rounded text-slate-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* RENDERING CLINICS */}
-                {inspectorActiveTable === 'clinics' && clinicsTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3 font-sans font-bold text-slate-100">{row.name}</td>
-                    <td className="py-3 px-3 text-slate-300 font-sans tracking-tight">{row.phone}</td>
-                    <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">{row.address}</td>
-                    <td className="py-3 px-3 max-w-[124px] truncate text-[9px] text-[#2cdebf]">{row.logo}</td>
-                    <td className="py-3 px-3 max-w-[124px] truncate text-[9px] text-slate-500">{row.cover_image}</td>
-                    <td className="py-3 px-3 text-slate-600 text-[10px]">{row.created_at.slice(0, 10)}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING DENTISTS */}
-                {inspectorActiveTable === 'dentists' && dentistsTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3 text-slate-400">clinic_{row.clinic_id}</td>
-                    <td className="py-3 px-3 font-sans font-bold text-slate-200">{row.name}</td>
-                    <td className="py-3 px-3 text-cyan-400 font-semibold">{row.title}</td>
-                    <td className="py-3 px-3 text-slate-400 max-w-[130px] truncate text-[11px]">{row.bio}</td>
-                    <td className="py-3 px-3 max-w-[100px] truncate text-[9px] text-slate-500">{row.image}</td>
-                    <td className="py-3 px-3 text-slate-600 text-[10px]">{row.created_at.slice(0, 10)}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING SERVICES */}
-                {inspectorActiveTable === 'services' && servicesTable.map((row) => (
-                  <tr key={row.id} className="text-slate-200 hover:bg-slate-800/10 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3 font-bold font-sans">{row.name}</td>
-                    <td className="py-3 px-3 text-emerald-400 font-bold">${row.price} USD</td>
-                    <td className="py-3 px-3">{row.duration} minutes</td>
-                    <td className="py-3 px-3">{row.warranty_months} m</td>
-                    <td className="py-3 px-3 text-amber-500">{row.requires_consultation ? 'true' : 'false'}</td>
-                    <td className="py-3 px-3">{row.is_available ? 'true' : 'false'}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING OFFERS */}
-                {inspectorActiveTable === 'offers' && offersTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">clinic_{row.clinic_id}</td>
-                    <td className="py-3 px-3 font-bold text-slate-200 font-sans">{row.title}</td>
-                    <td className="py-3 px-3 text-[#2cdebf] font-bold text-[10px]">{row.discount}</td>
-                    <td className="py-3 px-3 text-amber-400 font-mono text-[11px]">{row.expiry_date}</td>
-                    <td className="py-3 px-3 max-w-[140px] truncate text-[9px] text-slate-500">{row.image}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING CATEGORIES */}
-                {inspectorActiveTable === 'categories' && categoriesTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10 whitespace-nowrap">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3 font-sans text-slate-200 font-bold">{row.name}</td>
-                    <td className="py-3 px-3 text-slate-400">{row.slug}</td>
-                    <td className="py-3 px-3 text-cyan-400 font-bold">{row.total_clicks}</td>
-                    <td className="py-3 px-3 text-slate-500">{row.is_active ? 'true' : 'false'}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING SUB_CATEGORIES */}
-                {inspectorActiveTable === 'sub_categories' && subCategoriesTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">category_{row.category_id}</td>
-                    <td className="py-3 px-3 font-sans text-slate-200 font-semibold">{row.name}</td>
-                    <td className="py-3 px-3 text-cyan-400">{row.is_featured ? 'true' : 'false'}</td>
-                    <td className="py-3 px-3 text-slate-600 text-[10px]">{row.created_at.slice(0, 10)}</td>
-                  </tr>
-                ))}
-
-                {/* RENDERING MEDIA */}
-                {inspectorActiveTable === 'media' && mediaTable.map((row) => (
-                  <tr key={row.id} className="text-slate-300 hover:bg-slate-800/10">
-                    <td className="py-3 px-3 font-semibold text-emerald-400">#{row.id}</td>
-                    <td className="py-3 px-3">clinic_{row.clinic_id || 'NULL'}</td>
-                    <td className="py-3 px-3 max-w-[180px] truncate text-[10px] text-emerald-400 select-all">{row.file_path}</td>
-                    <td className="py-3 px-3 text-slate-400 text-xs">{row.file_type}</td>
-                    <td className="py-3 px-3 text-slate-500 text-[11px]">{row.dimensions || 'N/A'}</td>
-                    <td className="py-3 px-3 text-slate-500">{row.is_public ? 'true' : 'false'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Database DDL SQL Schema viewer & interactive guides */}
-          <div className="bg-slate-900 border-t border-slate-800 p-5 space-y-4">
-            <h4 className="font-sans font-bold text-xs text-slate-200 flex items-center gap-1.5">
-              <Code className="w-4 h-4 text-emerald-400" />
-              Erbil Supabase PostgreSQL Blueprint Schema &amp; Seed Generator
-            </h4>
-
-            <div className="text-[11px] text-slate-400 leading-relaxed space-y-2">
-              <p>
-                When deploying to Supabase, these tables map in a 1-to-1 manner. High reliability constraints (foreign keys, defaults) ensure that relationships are preserved:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-slate-300">
-                <li><strong className="text-emerald-400">appointments:</strong> References `users`, `clinics`, and `dentists` with status constraints for high clinical precision.</li>
-                <li><strong className="text-emerald-400">favorites:</strong> Facilitates personalized directories for clinical branches or preferred dentists.</li>
-                <li><strong className="text-emerald-400 font-mono">Row Level Security (RLS):</strong> Allowed read access for anonymous queries; other tables have targeted authorization keys.</li>
-              </ul>
-            </div>
-
-            <div className="bg-[#0b0f19] border border-slate-800 p-3 rounded-xl font-mono text-[10px] max-h-48 overflow-y-auto text-slate-400 whitespace-pre">
-{`-- Create SQL constraint triggers conforming to your tables
-ALTER TABLE appointments ADD CONSTRAINT ch_status CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed'));
-ALTER TABLE contacts ADD CONSTRAINT ch_contact_status CHECK (status IN ('new', 'in_progress', 'resolved'));
-
--- Active Row Insertion Payload for Yousif Majid (User #1)
-INSERT INTO appointments (user_id, clinic_id, dentist_id, date, time, status)
-VALUES (1, ${appointmentsTable[0]?.clinic_id || 1}, ${appointmentsTable[0]?.dentist_id || 1}, '${appointmentsTable[0]?.date || '2026-06-15'}', '${appointmentsTable[0]?.time || '09:30 AM'}', 'pending');`}
-            </div>
-          </div>
-        </section>
-        )}
-
-      </main>
-
-      {/* Footer System Credits */}
-      <footer className="bg-slate-950 border-t border-slate-900 py-8 px-6 text-center text-xs text-slate-600 font-sans">
-        <div className="max-w-7xl mx-auto space-y-2 select-none">
-          <p className="font-bold tracking-wide text-slate-400">HALA DENT CLINICS DIRECTORY CO.</p>
-          <p>© 2026 Erbil Governorate - Hala Dent Clinical Precision System. Autogenerated and deployed conforming with strict custom parameters.</p>
-        </div>
-      </footer>
-    </div>
   );
 }
 
