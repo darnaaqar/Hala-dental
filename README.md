@@ -78,8 +78,15 @@ git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
 git push -u origin main
 ```
 
-### Step 3: CI/CD Build Checks on GitHub Actions
-We've pre-configured a continuous integration pipeline for your workspace:
-- Check out the **`.github/workflows/ci.yml`** file.
-- Whenever you push updates to `main` or `master`, GitHub Actions will spin up a fresh runner, install clean dependencies, run type checks (`tsc --noEmit`), and compile production assets (`npm run build`).
-- Any build or type errors will be flagged instantly within your repository commits page!
+### Step 3: Download your Android .apk from GitHub Actions
+We have fully integrated Ionic Capacitor for native Android builds, and configured your continuous integration pipeline to auto-compile your APK!
+- Check out the **`.github/workflows/ci.yml`** file in this repo.
+- Whenever you push updates to `main` or `master`, GitHub Actions will spin up a fresh runner, install dependencies, run type checks, compile the web assets, sync with Capacitor, and automatically build your Android `.apk` file!
+- **How to download your APK file from GitHub**:
+  1. Push your code changes/commits to your remote GitHub repository (`git push`).
+  2. Open your repository in your web browser.
+  3. Click on the **"Actions"** tab at the very top of your GitHub repository menu.
+  4. Click on the most recent run (e.g., matching your latest commit message).
+  5. Scroll down to the bottom of that run's summary page to find the **"Artifacts"** section.
+  6. You will see a named package: **`Hala-Dent-APK`**. Click it to download the ZIP file containing your installable Android `.apk` file!
+  7. Extract the ZIP, transfer the `.apk` to your phone, and install it!
