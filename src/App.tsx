@@ -45,7 +45,12 @@ import {
   Image as ImageIcon,
   Share2,
   HelpCircle,
-  Video
+  Video,
+  Lock,
+  Megaphone,
+  Info,
+  ClipboardList,
+  LogIn
 } from 'lucide-react';
 
 import {
@@ -63,19 +68,12 @@ import { Category, SubCategory, Clinic, Dentist, Service, Offer, User as UserTyp
 import { supabase } from './lib/supabase';
 
 export default function App() {
-  // Brand Logo selection options (5 generated variants)
+  // Brand Logo selection options (Concept 3: Digital Smile Glow)
   const logoOptions = [
-    { id: 1, src: '/src/assets/images/hala_dent_logo_1_1781652549570.jpg', name: 'Premium Teal & Swoosh', desc: 'Minimalist clinical tooth with stylish teal & emerald stroke' },
-    { id: 2, src: '/src/assets/images/hala_dent_logo_2_1781652561541.jpg', name: 'Luxurious Monogram H', desc: 'Monogram representation fusing clinical crown and character H' },
-    { id: 3, src: '/src/assets/images/hala_dent_logo_3_1781652573843.jpg', name: 'Digital Smile Glow', desc: 'Tech-forward glowing contour emphasizing beautiful healthy smiles' },
-    { id: 4, src: '/src/assets/images/hala_dent_logo_4_1781652586372.jpg', name: 'Organic Nature Care', desc: 'Pristine blue tooth cradled by soft organic green wellness leaves' },
-    { id: 5, src: '/src/assets/images/hala_dent_logo_5_1781652597362.jpg', name: 'Royal Crown Silver', desc: 'Prestigious classic healthcare design featuring crown and cross' }
+    { id: 3, src: '/src/assets/images/hala_dent_logo_3_1781652573843.jpg', name: 'Digital Smile Glow', desc: 'An ultra-modern, tech-forward glowing digital smile line with subtle light sparkles over a rich navy gradient.' }
   ];
 
-  const [selectedLogoId, setSelectedLogoId] = useState<number>(() => {
-    const saved = localStorage.getItem('hala_dent_selected_logo_id');
-    return saved ? parseInt(saved, 10) : 1;
-  });
+  const [selectedLogoId, setSelectedLogoId] = useState<number>(3);
 
   useEffect(() => {
     localStorage.setItem('hala_dent_selected_logo_id', selectedLogoId.toString());
@@ -91,6 +89,12 @@ export default function App() {
 
   // Active Android Emulator Navigation
   const [activeTab, setActiveTab] = useState<'clinics' | 'doctors' | 'services' | 'chat' | 'more'>('clinics');
+
+  // Authentication session state to support screenshot entry login/splash
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem('hala_dent_logged_in') !== 'false';
+  });
+  const [loginPhone, setLoginPhone] = useState<string>('');
 
   // Dynamic scale states to fit the applet perfectly inside any browser or iframe visual frames
   const [appScale, setAppScale] = useState<number>(() => {
@@ -724,254 +728,206 @@ export default function App() {
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const [selectedClinicCategory, setSelectedClinicCategory] = useState<string>('Nearby');
+
   const renderUnifiedHome = () => {
+    // filter clinic list
+    const filteredByTag = clinicsTable.filter((cl) => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = cl.name.toLowerCase().includes(q) || cl.address.toLowerCase().includes(q);
+      
+      if (!matchesSearch) return false;
+
+      if (!searchQuery.trim()) {
+        if (selectedClinicCategory === 'Emergency') {
+          return cl.id === 2; // Hala Orthodontics represents Emergency check
+        }
+        if (selectedClinicCategory === 'Orthodontic') {
+          return cl.id === 2; // Orthodontics
+        }
+      }
+      return true;
+    });
+
     return (
-      <div className="p-4 space-y-4">
-        
-        {/* Welcome Greet Banner */}
-        <div className="bg-slate-900 text-white rounded-3xl p-4.5 relative overflow-hidden shadow-sm select-none">
-          <div className="absolute -right-4 -bottom-4 opacity-10 pointer-events-none">
-            <Sparkles className="w-36 h-36 text-blue-400" />
-          </div>
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[8px] bg-blue-600 px-2 py-0.5 rounded-full uppercase font-mono tracking-wider font-extrabold text-white">★ Active Patient</span>
-              <h3 className="font-headline font-extrabold text-white text-sm mt-1.5">Slaw, {currentUser.name}!</h3>
-              <p className="text-[10px] text-slate-300 leading-normal font-sans mt-0.5">Your dental wellness is active. Welcome back.</p>
-            </div>
-            <img src={currentUser.profile_picture} alt={currentUser.name} className="w-10 h-10 rounded-full border border-blue-500 object-cover shadow-sm" />
+      <div className="p-4 space-y-4 font-sans">
+        {/* Screen Header Back Area */}
+        <div className="flex items-center gap-3 select-none">
+          <button 
+            onClick={() => showToast('Navigation back triggered')} 
+            className="p-1 text-slate-600 hover:bg-slate-100 rounded-full shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="font-headline font-extrabold text-lg text-slate-900 leading-none">
+              {lang === 'en' ? 'Clinic Directory' : lang === 'ar' ? 'دليل العيادات' : 'ڕێبەری کلینیک'}
+            </h1>
+            <p className="text-[10px] text-slate-500 font-medium mt-1">
+              {lang === 'en' ? 'Find the best care near you' : lang === 'ar' ? 'اعثر على أفضل رعاية صحية بالقرب منك' : 'باشترین چاودێری لە نزیکتەوە بدۆزەرەوە'}
+            </p>
           </div>
         </div>
 
-        {/* Shared Search Bar */}
+        {/* Search capsule */}
         <div className="relative">
           <Search className="absolute top-3.5 left-3.5 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder={t.searchPlaceholder}
+            placeholder={lang === 'en' ? 'Search by clinic name or area...' : 'ابحث باسم العيادة أو المنطقة...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-2xl text-xs font-semibold placeholder-slate-400"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-100/90 border border-slate-200/50 focus:outline-none focus:ring-2 focus:ring-[#006b5a]/10 rounded-2xl text-xs font-semibold placeholder-slate-400"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-3 bg-slate-200 text-slate-500 rounded-full p-0.5 hover:bg-slate-300"
+              className="absolute right-3 top-3 bg-slate-200 text-slate-500 rounded-full p-0.5 animate-fade-in"
             >
               <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
-        {/* Campaign Promo banner */}
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-3.5 rounded-3xl flex items-center gap-3 shadow-xs">
-          <div className="p-2 bg-white/20 rounded-2xl shrink-0">
-            <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h5 className="text-[8px] font-extrabold uppercase leading-none text-emerald-100 font-mono">Special Campaign Promo</h5>
-            <h4 className="font-headline font-extrabold text-xs text-white leading-tight mt-0.5">30% Whitening Discount Active</h4>
-            <p className="text-[9px] text-emerald-100 truncate mt-0.5 font-medium">Lifting yellowing matrices safely.</p>
-          </div>
-          <button
-            onClick={() => { setActiveTab('services'); showToast('Whitening details focused!'); }}
-            className="bg-white hover:bg-emerald-50 text-emerald-800 text-[9px] font-extrabold px-3 py-1.5 rounded-full active-scale shrink-0"
-          >
-            Claim
-          </button>
-        </div>
-
-        {/* Specialty Categories Scroll */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center px-1">
-            <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide">Specialties &amp; Services</span>
-            <button onClick={() => { setActiveTab('services'); }} className="text-[9px] text-blue-600 font-extrabold hover:underline">See All</button>
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
-            {categoriesTable.map((cat) => (
+        {/* Scrollable category pill tags */}
+        <div className="flex gap-2 overflow-x-auto hide-scrollbar select-none pt-0.5">
+          {['Nearby', 'Emergency', 'Orthodontic', 'Cosmetics'].map((tag) => {
+            const isActive = selectedClinicCategory === tag;
+            return (
               <button
-                key={cat.id}
+                key={tag}
                 onClick={() => {
-                  setSelectedCategoryFilter(cat.id);
-                  setActiveTab('services');
-                  showToast(`Loaded services for specialty: ${cat.name}`);
+                  setSelectedClinicCategory(tag);
+                  showToast(`Selected Category: ${tag}`);
                 }}
-                className="flex-none bg-white font-bold text-[10px] text-slate-700 px-3.5 py-1.5 rounded-full border border-slate-200/60 hover:bg-slate-50 transition-colors shadow-3xs flex items-center gap-1.5"
+                className={`flex-none font-extrabold text-[11px] px-4 py-2 rounded-full border transition-all active-scale ${
+                  isActive 
+                    ? 'bg-[#006b5a] text-white border-[#006b5a]' 
+                    : 'bg-white text-slate-500 border-slate-200/60 hover:bg-slate-50'
+                }`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                {cat.name}
+                {tag}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
 
-        {/* Top Specialists list carousel */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center px-1">
-            <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide">{t.topSpecialists}</span>
-            <button onClick={() => { setActiveTab('doctors'); }} className="text-[9px] text-blue-600 font-extrabold hover:underline">Directory</button>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto hide-scrollbar pb-1">
-            {dentistsTable.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex-none w-32 bg-white border border-slate-200/50 p-2.5 rounded-2xl text-center shadow-3xs relative flex flex-col justify-between"
+        {/* Clinics Cards */}
+        <div className="space-y-4">
+          {filteredByTag.map((cl, idx) => {
+            // Determine clinical tag
+            let tagLabel = "Open";
+            let tagColorClass = "bg-emerald-50 text-emerald-700 border-emerald-100";
+            if (cl.id === 2) {
+              tagLabel = "Emergency Only";
+              tagColorClass = "bg-rose-50 text-rose-700 border-rose-100";
+            } else if (cl.id === 3) {
+              tagLabel = "Closes 6PM";
+              tagColorClass = "bg-slate-100 text-slate-600 border-slate-200";
+            }
+
+            return (
+              <div 
+                key={cl.id} 
+                className="bg-white rounded-[32px] overflow-hidden border border-slate-200/80 shadow-3xs hover:border-slate-300 transition-all flex flex-col"
               >
-                <div>
-                  <img
-                    src={doc.image}
-                    alt={doc.name}
-                    className="w-11 h-11 rounded-full object-cover mx-auto border border-emerald-400 shadow-3xs mb-1.5"
+                {/* Cover Image with Rating Badge layered top-right */}
+                <div className="h-44 relative">
+                  <img 
+                    src={cl.cover_image} 
+                    alt={cl.name} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
                   />
-                  <h6 className="font-extrabold text-[10px] text-slate-800 truncate">{doc.name}</h6>
-                  <p className="text-[8px] text-slate-400 truncate">{doc.title}</p>
-                </div>
-                <button
-                  onClick={() => { setSelectedDoctorForBooking(doc); }}
-                  className="mt-2.5 w-full py-1 bg-blue-50 hover:bg-blue-100 text-[#0058bc] font-extrabold text-[9px] rounded-lg transition-colors active-scale"
-                >
-                  Book Now
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* GPS location and Routing */}
-        <div className="space-y-2">
-          <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide px-1">GPS Route &amp; Nearest Clinics</span>
-          
-          <div className="relative h-36 rounded-3xl overflow-hidden shadow-3xs border border-slate-200/60">
-            <img
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8MnDfu4W9Qm2gh-epGMr6eVix1A6C2oQuZl4vyaYs3PewWFnvuhewuxvYebVFJLvN3YL88wuyAzfSP0KqYasxoisUET5cEvMMA4Jf-P5AImkuu9sIqJbxfrDH9ge9v62vavZ28TIrwoWngvG9O3D3qJIe0M7hf7n59lgNmk0bc5J_9uXEZsrDwgzBofupr80eNbMnChXruiABCNLmdikrk-dXUw3eVOP6Aoo4hk2dRBdwY7Z5cK79jTFNZvYkdyRXUVViFoIfPA"
-              alt="Erbil City Locator map"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-slate-900/15 pointer-events-none" />
-            <div className="absolute top-2 right-2 flex flex-col gap-1.5">
-              <span className="bg-emerald-500 text-white font-mono text-[7px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider backdrop-blur-xs shadow-xs animate-pulse">
-                ● GPS ONLINE
-              </span>
-            </div>
-            <div className="absolute bottom-2 left-2 right-2">
-              <div className="bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-md border border-slate-100 flex items-center gap-2">
-                <div className="w-5 h-5 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-                  <MapPin className="w-3 h-3 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h5 className="font-bold text-[8.5px] text-slate-900 truncate">Calibrating nearest dental chairs...</h5>
-                  <p className="text-[7.5px] text-slate-500 truncate font-mono">Gulan Street, Erbil</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            {clinicsTable.map((cl, idx) => (
-              <div
-                key={cl.id}
-                className="bg-white p-2 rounded-2xl border border-slate-100/85 shadow-3xs flex items-center justify-between gap-3 hover:border-slate-300 transition-all cursor-pointer active-scale"
-                onClick={() => {
-                  showToast(`Driving routing calibrated to: ${cl.name}. Dist: ${idx === 0 ? '1.2 km' : idx === 1 ? '3.4 km' : '4.8 km'}`);
-                }}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                    <MapPin className="w-3 h-3 text-blue-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h5 className="font-extrabold text-[9.5px] text-slate-800 truncate leading-snug">{cl.name}</h5>
-                    <p className="text-[7.5px] text-slate-400 truncate font-mono">{cl.address}</p>
+                  <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border border-slate-100">
+                    <span className="text-amber-500 text-xs">⭐</span>
+                    <span className="text-slate-800">{cl.id === 2 ? '4.7' : cl.id === 3 ? '4.8' : '4.9'}</span>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <span className="block text-[9px] font-extrabold text-[#006b5a] font-sans">
-                    {idx === 0 ? '1.2 km' : idx === 1 ? '3.4 km' : '4.8 km'}
-                  </span>
-                  <span className="block text-[7.5px] text-slate-400 font-semibold font-mono">
-                    {idx === 0 ? '4m drive' : idx === 1 ? '10m drive' : '15m drive'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Appointment Status */}
-        <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-3xs space-y-2">
-          <div className="flex justify-between items-center select-none">
-            <span className="text-[8px] text-[#006b5a] font-extrabold uppercase font-mono tracking-wider">
-              Personal Appointment Schedule
-            </span>
-            <span className="text-[8px] text-slate-400 font-extrabold">{appointmentsTable.length} Booked</span>
-          </div>
-          <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-0.5 scrollbar-thin">
-            {appointmentsTable.map((ap) => {
-              const doc = dentistsTable.find(d => d.id === ap.dentist_id);
-              return (
-                <div key={ap.id} className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center justify-between gap-3 text-xs font-sans">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-blue-100 text-[#0058bc] rounded-full flex items-center justify-center font-extrabold text-[9px]">
-                      {ap.time.substring(0, 2)}
-                    </div>
-                    <div>
-                      <h5 className="font-extrabold text-[10px] text-slate-800 font-headline">{doc?.name || 'Dr. Specialist'}</h5>
-                      <p className="text-[8px] text-slate-400 font-mono">{ap.date} &bull; {ap.time}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <span className={`px-2 py-0.5 rounded-full text-[7.5px] uppercase tracking-wider font-mono font-extrabold ${
-                      ap.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800 border border-emerald-250' : 'bg-amber-100 text-amber-800 border border-amber-250'
-                    }`}>
-                      {ap.status}
+                {/* Info and Actions */}
+                <div className="p-4.5 space-y-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-headline font-black text-sm text-slate-900 leading-tight">
+                      {cl.name}
+                    </h3>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-mono font-extrabold border ${tagColorClass}`}>
+                      {tagLabel}
                     </span>
                   </div>
+
+                  <p className="text-[11px] text-slate-500 leading-normal font-medium">
+                    {cl.description}
+                  </p>
+
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold font-mono pb-1 border-b border-slate-100">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{cl.address}</span>
+                  </div>
+
+                  {/* Booking and View map actions */}
+                  <div className="flex gap-2.5 pt-1">
+                    <button
+                      onClick={() => {
+                        const firstDocOfClinic = dentistsTable.find(d => d.clinic_id === cl.id) || dentistsTable[0];
+                        setSelectedDoctorForBooking(firstDocOfClinic);
+                        showToast(`Opened Booking with Doctor of ${cl.name}`);
+                      }}
+                      className="flex-1 bg-[#0058bc] hover:bg-[#00479e] text-white font-extrabold text-[11px] py-2.5 rounded-full shadow-md active-scale transition-colors text-center"
+                    >
+                      Book Now
+                    </button>
+                    <button
+                      onClick={() => showToast(`Calibrated Driving Route for GPS: ${cl.name} (${cl.address}). Distance: ${cl.id === 1 ? '1.2km' : '3.4km'}`)}
+                      className="flex-1 bg-white border border-[#006b5a] text-[#006b5a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
+                    >
+                      View Map
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Emergency Voice hotline */}
-        <div className="p-2.5 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-between gap-3 select-none">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-rose-505 bg-rose-500 text-white rounded-full flex items-center justify-center shrink-0">
-              <Phone className="w-3 h-3 fill-white" />
-            </div>
-            <div>
-              <h5 className="font-bold text-[9px] text-rose-800 font-headline">{t.emergencyButton}</h5>
-              <p className="text-[7.5px] text-rose-500 font-sans leading-none mt-0.5">Clinical trauma callback line</p>
-            </div>
+        {/* Footer Connect channels block */}
+        <div className="bg-slate-50 rounded-2xl p-4 mt-2 space-y-3 font-sans select-none border border-slate-100">
+          <h4 className="font-headline font-extrabold text-[11px] text-center text-slate-800">
+            {lang === 'en' ? 'Connect with us' : 'تواصل معنا'}
+          </h4>
+          <div className="flex justify-around items-center gap-1.5">
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); showToast('Heading to Hala Dent Facebook Feed'); }}
+              className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#0058bc]"
+            >
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
+                <Globe className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-[9px] font-bold">Facebook</span>
+            </a>
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); showToast('Heading to Instagram'); }}
+              className="flex flex-col items-center gap-1 text-slate-500 hover:text-pink-600"
+            >
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
+                <ImageIcon className="w-4 h-4 text-pink-500" />
+              </div>
+              <span className="text-[9px] font-bold">Instagram</span>
+            </a>
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); showToast('App link copier triggered'); }}
+              className="flex flex-col items-center gap-1 text-slate-500 hover:text-slate-900"
+            >
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
+                <Share2 className="w-4 h-4 text-slate-700" />
+              </div>
+              <span className="text-[9px] font-bold">Share App</span>
+            </a>
           </div>
-          <button
-            onClick={() => { showToast('Simulating direct hotline dial...'); }}
-            className="bg-rose-600 text-white text-[8px] font-extrabold px-2.5 py-1 rounded-full active-scale"
-          >
-            Dial Hotline
-          </button>
         </div>
-
-        {/* Healthy Tooth Tip Section */}
-        <div className="bg-[#e8f5e9]/65 border border-emerald-200/50 rounded-2xl p-3 space-y-1.5 shadow-3xs select-none">
-          <div className="flex justify-between items-start">
-            <div className="space-y-0.5">
-              <span className="text-[7.5px] text-[#006b5a] font-extrabold flex items-center gap-1 uppercase tracking-wider font-mono">
-                <Shield className="w-3 h-3 text-emerald-600" />
-                {t.healthTip}
-              </span>
-              <h4 className="font-headline font-bold text-[11px] text-slate-800 mt-0.5">
-                {t.tipTitle}
-              </h4>
-            </div>
-            <div className="p-1 bg-white text-emerald-600 rounded-lg shadow-3xs font-extrabold text-[8px] font-mono">
-              ★ TIP
-            </div>
-          </div>
-          <p className="text-[8.5px] text-slate-600 leading-normal font-sans">
-            {t.tipText}
-          </p>
-        </div>
-
       </div>
     );
   };
@@ -989,72 +945,184 @@ export default function App() {
         </div>
       )}
 
-      {/* App Header bar */}
-      <header className="bg-white/90 backdrop-blur-md px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-slate-200 bg-white">
-            <img 
-              src={activeLogo.src} 
-              alt="Hala Dent Logo" 
-              className="w-full h-full object-cover" 
-              referrerPolicy="no-referrer"
-            />
+      {!isLoggedIn ? (
+        <div className="flex-1 w-full flex flex-col justify-between items-center bg-slate-50 relative p-8 select-none">
+          <div className="w-full max-w-sm flex-1 flex flex-col justify-center items-center py-6">
+            <div className="relative w-24 h-24 rounded-full shadow-lg flex items-center justify-center bg-white border-2 border-slate-100 overflow-hidden mx-auto">
+              <img 
+                src={activeLogo.src} 
+                alt="Hala Dent Logo" 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            
+            <h1 className="font-headline font-extrabold text-3xl text-neutral-800 tracking-tight mt-5 text-center">
+              {lang === 'en' ? 'Hala Dent' : lang === 'ar' ? 'هلا دنت' : 'هالا دێنت'}
+            </h1>
+            <p className="text-xs text-slate-400 font-bold tracking-wide mt-1 text-center font-serif">
+              {lang === 'en' ? 'Premium Dental Care' : lang === 'ar' ? 'رعايـة أسنان مميـزة' : 'چاودێری ددانی پێشکەوتوو'}
+            </p>
+
+            {/* Quick Language switcher inside splash */}
+            <div className="flex items-center bg-white p-1 rounded-full text-xs shrink-0 select-none border border-slate-200 mt-5 shadow-3xs">
+              <button
+                onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                عربي
+              </button>
+              <button
+                onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                کوردی
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                showToast('Signing in secure session...');
+                setTimeout(() => {
+                  setIsLoggedIn(true);
+                  localStorage.setItem('hala_dent_logged_in', 'true');
+                  showToast('Slaw! Welcome back to Hala Dent.');
+                }, 800);
+              }}
+              className="bg-white p-6 rounded-[32px] border border-slate-200/80 shadow-md w-full max-w-sm mt-8 space-y-4 flex flex-col"
+            >
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                  {lang === 'en' ? 'Phone Number' : lang === 'ar' ? 'رقم الهاتف' : 'ژمارەی مۆبایل'}
+                </label>
+                <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20">
+                  <span className="bg-slate-100 px-3.5 py-2.5 text-xs text-slate-500 font-bold border-r border-slate-200 flex items-center shrink-0">
+                    +964
+                  </span>
+                  <input
+                    type="tel"
+                    placeholder="750 123 4567"
+                    value={loginPhone}
+                    onChange={(e) => setLoginPhone(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-transparent focus:outline-none text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="bg-[#0058bc] hover:bg-[#00479e] text-white font-extrabold text-xs py-3.5 rounded-full w-full shadow-md active-scale transition-colors text-center"
+              >
+                {lang === 'en' ? 'Continue' : lang === 'ar' ? 'متابعة' : 'بەردەوامبە'} &rarr;
+              </button>
+            </form>
           </div>
-          <h2 className="font-headline font-extrabold text-base text-blue-600 tracking-tight">
-            {t.title}
-          </h2>
+
+          <p className="text-[10px] text-slate-300 font-mono text-center tracking-wide mt-auto">
+            Device ID: [Hidden Signature]
+          </p>
         </div>
+      ) : (
+        <>
+          {/* App Header bar */}
+          {activeTab === 'more' ? (
+            <header className="bg-white px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0 font-sans">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => { setActiveTab('clinics'); showToast('Back to clinics directory'); }} 
+                  className="p-1 text-[#0058bc] hover:bg-slate-50 rounded-full shrink-0 transition-colors"
+                >
+                  <ArrowLeft className="w-5.5 h-5.5 stroke-[2.5]" />
+                </button>
+                <span className="font-headline font-black text-lg text-[#0058bc]">
+                  Hala Dent
+                </span>
+              </div>
 
-        <div className="flex items-center gap-2">
-          {/* Quick Language Toggle Selector directly inside header */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-full text-xs shrink-0 select-none border border-slate-200">
-            <button
-              onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
-              className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              EN
-            </button>
-            <button
-              onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              عربي
-            </button>
-            <button
-              onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
-              className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              کوردی
-            </button>
-          </div>
+              <div className="flex items-center gap-4 text-[#0058bc]">
+                <button onClick={() => showToast('Search settings')} className="p-1 hover:bg-slate-50 rounded-full transition-colors active-scale">
+                  <Search className="w-5 h-5 stroke-[2.5]" />
+                </button>
+                <button onClick={() => { setActiveTab('clinics'); }} className="p-1 hover:bg-slate-50 rounded-full transition-colors active-scale">
+                  <Home className="w-5 h-5 stroke-[2.5]" />
+                </button>
+              </div>
+            </header>
+          ) : (
+            <header className="bg-white/90 backdrop-blur-md px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-slate-200 bg-white">
+                  <img 
+                    src={activeLogo.src} 
+                    alt="Hala Dent Logo" 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <h2 className="font-headline font-extrabold text-base text-blue-600 tracking-tight">
+                  {t.title}
+                </h2>
+              </div>
 
-          {/* Notification Icon Badge */}
-          <button
-            onClick={() => {
-              setActiveTab('more');
-              showToast('Viewing Patient Notifications');
-            }}
-            className="p-2 hover:bg-slate-100 rounded-full text-blue-600 active-scale relative shrink-0"
-          >
-            <Bell className="w-5 h-5" />
-            {notificationsTable.some(n => !n.is_read) && (
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping"></span>
-            )}
-          </button>
-        </div>
-      </header>
+              <div className="flex items-center gap-2">
+                {/* Quick Language Toggle Selector directly inside header */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-full text-xs shrink-0 select-none border border-slate-200">
+                  <button
+                    onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
+                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    عربي
+                  </button>
+                  <button
+                    onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
+                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    کوردی
+                  </button>
+                </div>
 
-      {/* Interactive Main Body View */}
-      <div className="flex-1 overflow-hidden relative flex flex-col bg-[#f7faf9]">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: lang === 'en' ? 12 : -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: lang === 'en' ? -12 : 12 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 text-slate-800"
-          >
+                {/* Notification Icon Badge */}
+                <button
+                  onClick={() => {
+                    setActiveTab('more');
+                    showToast('Viewing Patient Notifications');
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-full text-[#0058bc] active-scale relative shrink-0"
+                >
+                  <Bell className="w-5 h-5" />
+                  {notificationsTable.some(n => !n.is_read) && (
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping"></span>
+                  )}
+                </button>
+              </div>
+            </header>
+          )}
+
+          {/* Interactive Main Body View */}
+          <div className="flex-1 overflow-hidden relative flex flex-col bg-[#f7faf9]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, x: lang === 'en' ? 12 : -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: lang === 'en' ? -12 : 12 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+                className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 text-slate-800"
+              >
                 
                 {/* 1. VIEW TAB: CLINICS / HOME VIEW */}
                 {activeTab === 'clinics' && renderUnifiedHome()}
@@ -1593,137 +1661,158 @@ export default function App() {
 
                 {/* 2. VIEW TAB: DOCTORS DIRECTORY (with Horizontal views & verification badges) */}
                 {activeTab === 'doctors' && (
-                  <div className="animate-fade-in p-4 space-y-4">
-                    <div className="flex justify-between items-center select-none">
-                      <h3 className="font-headline font-extrabold text-sm text-slate-900">
-                        {t.doctorsList}
-                      </h3>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
-                        {filteredDentists.length} Active specialists
-                      </span>
-                    </div>
-
-                    {/* Filter specialties pills */}
-                    <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1 select-none">
-                      {[
-                        { key: '', label: 'All Specialties' },
-                        { key: 'Orthodontist', label: 'Orthodontists' },
-                        { key: 'Surgeon', label: 'Oral Surgeons' },
-                        { key: 'General', label: 'General Care' },
-                        { key: 'Cosmetic', label: 'Cosmetics' }
-                      ].map((p) => (
-                        <button
-                          key={p.key}
-                          onClick={() => setActiveDoctorFilter(p.key)}
-                          className={`flex-none font-bold text-[10px] px-3 py-1 rounded-full transition-all active-scale ${activeDoctorFilter === p.key ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Horizontal slider of Featured Specialists */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">
-                          {t.topSpecialists}
-                        </span>
+                  <div className="animate-fade-in p-4 space-y-4 font-sans">
+                    {/* Back Arrow Header */}
+                    <div className="flex items-center gap-3 select-none">
+                      <button 
+                        onClick={() => { setActiveTab('clinics'); showToast('Back to clinics directory'); }} 
+                        className="p-1 text-slate-600 hover:bg-slate-100 rounded-full shrink-0"
+                      >
+                        <ArrowLeft className="w-5 h-5" />
+                      </button>
+                      <div>
+                        <h1 className="font-headline font-extrabold text-lg text-slate-900 leading-none">
+                          {lang === 'en' ? 'Our Specialists' : lang === 'ar' ? 'أخصائيو عيادتنا' : 'پزیشکە پسپۆڕەکانمان'}
+                        </h1>
+                        <p className="text-[9px] text-slate-400 font-semibold mt-1">
+                          {lang === 'en' ? 'World-class dental professionals' : 'طاقم علاج عالمي متميز لخدمتكم'}
+                        </p>
                       </div>
-                      
-                      <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 pt-1 select-none">
-                        {dentistsTable.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="flex-none w-36 bg-white border border-slate-200/60 p-3 rounded-2xl shadow-xs text-center relative group"
+                    </div>
+
+                    {/* Rich paragraph description matching Screen 5 subtitle */}
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                      {lang === 'en' 
+                        ? 'Meet our team of world-class dental professionals dedicated to your smile and oral health. Every doctor is certified by the regional health ministry with verified active practice licenses.'
+                        : 'تعرف على نخبة من الأطباء والاستشاريين الملتزمين برعاية صحة وجمال ابتسامتك بأعلى معايير الدقة والتعقيم.'}
+                    </p>
+
+                    {/* Interactive Filter row styled select block */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-slate-400 uppercase font-black font-mono tracking-wider px-1">Filter Specialty</span>
+                      <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1 select-none">
+                        {[
+                          { key: '', label: 'All Specialties' },
+                          { key: 'Orthodontist', label: 'Orthodontists' },
+                          { key: 'Surgeon', label: 'Oral Surgeons' },
+                          { key: 'General', label: 'General Care' },
+                          { key: 'Cosmetic', label: 'Cosmetics' }
+                        ].map((p) => (
+                          <button
+                            key={p.key}
+                            onClick={() => {
+                              setActiveDoctorFilter(p.key);
+                              showToast(`Displaying ${p.label}`);
+                            }}
+                            className={`flex-none font-bold text-[10.5px] px-3.5 py-1.5 rounded-full transition-all active-scale border ${
+                              activeDoctorFilter === p.key 
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-3xs' 
+                                : 'bg-white text-slate-500 border-slate-200/70 hover:bg-slate-50'
+                            }`}
                           >
-                            <button
-                              onClick={() => handleToggleFavoriteDoc(doc.id)}
-                              className="absolute top-1.5 right-1.5 p-1 bg-slate-50 hover:bg-slate-100 text-slate-300 hover:text-red-500 rounded-full transition-transform active-scale z-10"
-                            >
-                              <Heart
-                                className={`w-3.5 h-3.5 ${favoritesTable.some(f => f.dentist_id === doc.id) ? 'fill-red-500 text-red-500' : ''}`}
-                              />
-                            </button>
-
-                            <div className="relative w-16 h-16 mx-auto mb-2">
-                              <img
-                                src={doc.image}
-                                alt={doc.name}
-                                className="w-full h-full object-cover rounded-full border-2 border-emerald-500/35 shadow-xs"
-                              />
-                              <span className="absolute bottom-0 right-0 h-4 w-4 bg-emerald-500 text-white rounded-full flex items-center justify-center border-2 border-white text-[8px]">
-                                ✓
-                              </span>
-                            </div>
-
-                            <h5 className="font-bold text-[11px] text-slate-800 leading-tight truncate">
-                              {doc.name}
-                            </h5>
-                            <p className="text-[9px] text-slate-400 truncate mb-2">
-                              {doc.title}
-                            </p>
-
-                            <button
-                              onClick={() => {
-                                setSelectedDoctorForBooking(doc);
-                                showToast(`Appointment drawer loaded for ${doc.name}`);
-                              }}
-                              className="w-full bg-blue-50 hover:bg-blue-100 text-blue-600 font-extrabold text-[10px] py-1 rounded-full transition-colors active-scale"
-                            >
-                              Book Doc
-                            </button>
-                          </div>
+                            {p.label}
+                          </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* Search result lists */}
-                    <div className="space-y-3">
-                      {filteredDentists.map((doc) => {
+                    {/* Search result list displaying Screen 5 structure layout */}
+                    <div className="space-y-4">
+                      {filteredDentists.map((doc, idx) => {
                         const isFav = favoritesTable.some(f => f.dentist_id === doc.id);
+                        
+                        // Custom features to display Screen 5 metadata bullet points
+                        let expYears = "12 yrs exp";
+                        let specialBadges = ["Board Certified", "Invisalign Gold"];
+                        if (doc.id === 1) {
+                          expYears = "15 yrs exp";
+                          specialBadges = ["Chief Implantologist", "Dental Arts Tutor"];
+                        } else if (doc.id === 2) {
+                          expYears = "8 yrs exp";
+                          specialBadges = ["Pediatric Specialist", "Painless Care"];
+                        } else {
+                          expYears = "10 yrs exp";
+                          specialBadges = ["General Practitioner", "3D Scan Expert"];
+                        }
+
                         return (
                           <div
                             key={doc.id}
-                            className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center gap-3 relative hover:border-slate-300 transition-colors"
+                            className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-3xs flex flex-col gap-3.5 relative hover:border-slate-300 transition-colors"
                           >
-                            <img
-                              src={doc.image}
-                              alt={doc.name}
-                              className="w-16 h-16 rounded-xl object-cover border border-slate-100 shadow-xs shrink-0"
-                            />
-
-                            <div className="flex-1 min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-1">
-                                <h4 className="font-bold text-xs text-slate-900 truncate">
-                                  {doc.name}
-                                </h4>
-                                <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            <div className="flex items-start gap-3.5">
+                              {/* Square / Rounded modern Doctor avatar avatar with verification badge overlay */}
+                              <div className="relative w-18 h-18 rounded-2xl overflow-hidden shrink-0 border border-slate-100 bg-slate-50 shadow-3xs">
+                                <img
+                                  src={doc.image}
+                                  alt={doc.name}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute bottom-1 right-1 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center border border-white text-[8px] font-black">
+                                  ✓
+                                </div>
                               </div>
-                              <p className="text-[10px] text-emerald-600 font-semibold">
-                                {doc.title}
-                              </p>
-                              <p className="text-[10px] text-slate-400 line-clamp-1 pr-4">
-                                {doc.bio}
-                              </p>
-                              <div className="flex items-center gap-1 pt-1 text-[10px]">
-                                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                <span className="font-bold text-slate-800">{doc.rating || '4.9'}</span>
-                                <span className="text-slate-400">({doc.reviews_count || '120'} reviews)</span>
+
+                              {/* Doctor info text */}
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <h4 className="font-headline font-black text-xs text-slate-900 truncate">
+                                    {doc.name}
+                                  </h4>
+                                  <button
+                                    onClick={() => handleToggleFavoriteDoc(doc.id)}
+                                    className={`p-1 rounded-full border border-slate-100 active-scale ${isFav ? 'bg-rose-50 text-rose-500' : 'text-slate-300 hover:text-rose-500 bg-white'}`}
+                                  >
+                                    <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-slate-300 bg-white'}`} />
+                                  </button>
+                                </div>
+
+                                <p className="text-[10.5px] text-[#006b5a] font-extrabold leading-none">
+                                  {doc.title}
+                                </p>
+
+                                <p className="text-[10px] text-slate-400 font-medium line-clamp-1 leading-normal">
+                                  {doc.bio}
+                                </p>
+
+                                {/* Rating block */}
+                                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold font-mono">
+                                  <span className="text-amber-500">⭐</span>
+                                  <span className="text-slate-800 font-extrabold">{doc.rating || '4.9'}</span>
+                                  <span className="text-slate-400">({doc.reviews_count || '120'} reviews)</span>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="flex flex-col gap-1 shrink-0 justify-end h-full">
+                            {/* Bullet tags matching Screen 5 credentials */}
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              <span className="bg-slate-100 text-slate-600 font-semibold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
+                                {expYears}
+                              </span>
+                              {specialBadges.map((badge, bIdx) => (
+                                <span key={bIdx} className="bg-blue-50 text-blue-600 font-bold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
+                                  {badge}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Dual Side-by-Side buttons row */}
+                            <div className="flex gap-2.5 pt-1.5 border-t border-slate-100">
                               <button
-                                onClick={() => handleToggleFavoriteDoc(doc.id)}
-                                className={`p-1.5 rounded-full border border-slate-100 active-scale ${isFav ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-50 text-slate-400 hover:text-rose-500'}`}
+                                onClick={() => {
+                                  // Fake open Profile Modal sheet details
+                                  showToast(`Viewing full credentials profile of ${doc.name}`);
+                                }}
+                                className="flex-1 bg-white border border-[#006b5a] text-[#006b5a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
                               >
-                                <Heart className="w-3.5 h-3.5 fill-current" />
+                                View Profile
                               </button>
                               <button
                                 onClick={() => setSelectedDoctorForBooking(doc)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-3 py-1 px-4 py-1.5 rounded-full active-scale"
+                                className="flex-1 bg-[#0058bc] hover:bg-[#00479e] text-white font-extrabold text-[11px] py-2.5 rounded-full shadow-md active-scale transition-colors text-center"
                               >
-                                Book
+                                Book Now
                               </button>
                             </div>
                           </div>
@@ -1911,272 +2000,389 @@ export default function App() {
 
                 {/* 5. VIEW TAB: MORE INFO - OFFERS, CONTACTS & AMENITIES */}
                 {activeTab === 'more' && (
-                  <div className="animate-fade-in p-4 space-y-4">
+                  <div className="animate-fade-in p-4 space-y-5 font-sans bg-[#f8faf9] min-h-screen">
                     
-                    {/* Brand Identity Selector */}
-                    <div className="bg-white border border-slate-200/90 rounded-3xl p-4 space-y-3 shadow-xs">
-                      <div className="flex justify-between items-center select-none">
-                        <span className="text-[10px] text-blue-600 font-extrabold uppercase font-mono tracking-wider">
-                          🎨 App Branding Preference
-                        </span>
-                        <span className="text-[10px] bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-bold">
-                          5 AI Concepts Available
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <h4 className="font-headline font-bold text-xs text-slate-800">
-                          {lang === 'en' ? 'Select Active App Icon' : lang === 'ar' ? 'اختر أيقونة التطبيق المفضلة' : 'ئایکۆنی کارای ئەپەکە هەڵبژێرە'}
-                        </h4>
-                        <p className="text-[10px] text-slate-400 leading-normal">
-                          {lang === 'en' 
-                            ? 'Toggle between five premium generated brand designs. Your logo changes instantly in the top header and splash nodes.' 
-                            : lang === 'ar'
-                            ? 'تنقل بين خمس تصاميم شعارات مميزة. سيتغير شعار التطبيق في شريط العنوان العلوي فوراً.'
-                            : 'لەنێوان پێنج دیزاینی دەگمەندا دیاریبکە. لۆگۆکە ڕاستەوخۆ دەگۆڕێت لە سەرەوە.'}
-                        </p>
-                      </div>
-
-                      {/* Horizontal list of choices */}
-                      <div className="flex gap-3 overflow-x-auto hide-scrollbar py-1 select-none">
-                        {logoOptions.map((logo) => {
-                          const isSelected = logo.id === selectedLogoId;
-                          return (
-                            <div
-                              key={logo.id}
-                              onClick={() => {
-                                setSelectedLogoId(logo.id);
-                                showToast(`Applied ${logo.name} logo preset!`);
-                              }}
-                              className={`flex-none w-32 bg-slate-50 border rounded-2xl p-2 cursor-pointer transition-all active-scale relative flex flex-col justify-between ${
-                                isSelected ? 'border-blue-500 bg-blue-50/20 ring-1 ring-blue-500/20' : 'border-slate-100 hover:border-slate-200'
-                              }`}
-                            >
-                              <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-1.5 border border-slate-100">
-                                <img
-                                  src={logo.src}
-                                  alt={logo.name}
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
-                                {isSelected && (
-                                  <div className="absolute inset-0 bg-blue-600/10 flex items-center justify-center">
-                                    <div className="bg-blue-600 text-white rounded-full p-1 shadow-xs">
-                                      <Check className="w-3.5 h-3.5" />
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="space-y-0.5">
-                                <h5 className={`text-[10px] font-extrabold truncate ${isSelected ? 'text-blue-700 font-black' : 'text-slate-700'}`}>
-                                  Concept {logo.id}
-                                </h5>
-                                <p className="text-[8px] text-slate-400 font-mono tracking-tight leading-none truncate">
-                                  {logo.name}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Quick Detail Summary of the active selection */}
-                      <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-2xl flex items-center gap-2.5">
-                        <img
-                          src={activeLogo.src}
-                          alt={activeLogo.name}
-                          className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200"
-                          referrerPolicy="no-referrer"
-                        />
+                    {/* Welcome Hero Card styled matching screenshot exactly */}
+                    <div className="bg-white rounded-[24px] p-4.5 border border-slate-100 shadow-3xs flex items-center justify-between gap-4 select-none">
+                      <div className="flex items-center gap-3.5">
+                        {/* Avatar block with verified sign */}
+                        <div className="relative shrink-0">
+                          <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-3xs">
+                            <User className="w-8 h-8 text-blue-500" />
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-[#10b981] rounded-full flex items-center justify-center border-2 border-white">
+                            <Check className="w-3 h-3 text-white stroke-[3.5]" />
+                          </div>
+                        </div>
+                        
+                        {/* Welcome text */}
                         <div className="min-w-0">
-                          <p className="text-[10px] font-extrabold text-slate-800 leading-none mb-0.5">
-                            {activeLogo.name}
-                          </p>
-                          <p className="text-[9px] text-slate-400 truncate leading-tight">
-                            {activeLogo.desc}
+                          <h3 className="font-headline font-black text-sm text-slate-900 leading-tight">
+                            Welcome to Hala Dent
+                          </h3>
+                          <p className="text-[10px] text-slate-500 font-semibold leading-normal mt-0.5">
+                            Access your medical history and clinical records instantly.
                           </p>
                         </div>
                       </div>
-                    </div>
-                    
-                    {/* Active Promos list */}
-                    <div className="space-y-2 select-none">
-                      <h4 className="font-headline font-bold text-xs text-slate-800">
-                        {t.promosHeader}
-                      </h4>
-                      <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-                        {offersTable.map((off) => (
-                          <div
-                            key={off.id}
-                            className="flex-none w-64 h-36 rounded-2xl overflow-hidden relative shadow-xs"
-                          >
-                            <img
-                              src={off.image}
-                              alt={off.title}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/85 to-transparent flex flex-col justify-end p-3">
-                              <span className="bg-[#54f8d7] text-[#005143] text-[9px] font-extrabold px-2 py-0.5 rounded-full w-fit uppercase mb-1">
-                                {off.discount}
-                              </span>
-                              <h5 className="text-white font-bold text-xs">{off.title}</h5>
-                              <p className="text-slate-200 text-[10px] line-clamp-1">{off.description}</p>
-                              <span className="text-[8px] text-slate-400 mt-1 font-mono">Expires {off.expiry_date}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+
+                      {/* Login / Register Button */}
+                      <button 
+                        onClick={() => {
+                          if (isLoggedIn) {
+                            setIsLoggedIn(false);
+                            showToast("Logged out successfully");
+                          } else {
+                            showToast("Opening Secure Portal Login");
+                          }
+                        }}
+                        className="bg-[#0058bc] hover:bg-[#00479e] text-white font-black text-[11px] px-4 py-2.5 rounded-full flex items-center gap-1.5 active-scale shrink-0 shadow-sm transition-all whitespace-nowrap"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Login / Register</span>
+                      </button>
                     </div>
 
-                    {/* Patient Notifications Panel */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                          <Bell className="w-4.5 h-4.5 text-blue-600" />
-                          Inbox Notifications
+                    {/* Section 1: CLINICAL RECORDS */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-2 px-1 select-none text-[#0058bc]">
+                        <ClipboardList className="w-4 h-4 shrink-0" />
+                        <span className="text-[10px] uppercase font-black tracking-wider">
+                          CLINICAL RECORDS
                         </span>
-                        <button
+                      </div>
+
+                      <div className="space-y-2">
+                        {/* Patient Profile */}
+                        <div 
                           onClick={() => {
-                            setNotificationsTable(prev => prev.map(n => ({ ...n, is_read: true })));
-                            showToast('Marked all as read');
+                            showToast("Displaying Patient Medical Profile details.");
                           }}
-                          className="text-[10px] text-slate-400 hover:text-slate-500 font-semibold"
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
-                          Clear Badges
-                        </button>
-                      </div>
-
-                      <div className="space-y-2 max-h-36 overflow-y-auto pr-1 hide-scrollbar">
-                        {notificationsTable.map((notif) => (
-                          <div
-                            key={notif.id}
-                            className={`p-2.5 rounded-xl text-xs flex justify-between gap-2 border ${notif.is_read ? 'bg-slate-50 border-slate-100' : 'bg-cyan-50/40 border-cyan-100'}`}
-                          >
-                            <div className="space-y-0.5 text-[11px]">
-                              <p className="font-bold text-slate-800">{notif.title}</p>
-                              <p className="text-slate-500 leading-normal">{notif.message}</p>
-                              <span className="text-[9px] text-slate-400 block font-mono">{notif.date.slice(11,16)}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <User className="w-5 h-5 text-[#0058bc]" />
                             </div>
-                            <button
-                              onClick={() => handleDeleteRow('notifications', notif.id)}
-                              className="text-slate-300 hover:text-rose-500"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Testimonials */}
-                    <div className="space-y-2 select-none">
-                      <h4 className="font-headline font-bold text-xs text-slate-800">
-                        {t.testimonialsHeader}
-                      </h4>
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 italic relative">
-                        <p className="text-[11px] text-slate-600 leading-relaxed pr-6">
-                          "The digital tooth scanning was incredible. I've never felt so comfortable at a dentist before. Highly recommended for nervous patients!"
-                        </p>
-                        <div className="mt-3 flex items-center gap-2 not-italic">
-                          <div className="w-7 h-7 rounded-full bg-[#58fbda] text-[#00201a] font-bold text-xs flex items-center justify-center shadow-xs">
-                            RA
-                          </div>
-                          <div>
-                            <p className="text-[11px] font-bold text-slate-800">Rawand Aziz</p>
-                            <div className="flex text-amber-400 text-[8px]">
-                              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Patient Profile
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                Personal details and medical history
+                              </p>
                             </div>
                           </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* My Appointments */}
+                        <div 
+                          onClick={() => {
+                            setActiveTab('clinics');
+                            showToast("Directing to active bookings");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Calendar className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                My Appointments
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                Scheduled visits and history
+                              </p>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
                         </div>
                       </div>
                     </div>
 
-                    {/* Amenities list */}
-                    <div className="space-y-2 select-none">
-                      <h4 className="font-headline font-bold text-xs text-slate-800">
-                        {t.amenitiesHeader}
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white border border-slate-100 rounded-xl p-2.5 flex items-center gap-2 shadow-xs">
-                          <Shield className="w-4 h-4 text-blue-600 shrink-0" />
-                          <div>
-                            <h5 className="font-bold text-[10px] text-slate-800">High-Tech Lab</h5>
-                            <p className="text-[8px] text-slate-400">Precision imaging</p>
+                    {/* Section 2: APP SETTINGS */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-2 px-1 select-none text-[#0058bc]">
+                        <Settings className="w-4 h-4 shrink-0" />
+                        <span className="text-[10px] uppercase font-black tracking-wider">
+                          APP SETTINGS
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {/* Language */}
+                        <div 
+                          onClick={() => {
+                            const nextLang = lang === 'en' ? 'ar' : lang === 'ar' ? 'ku' : 'en';
+                            setLang(nextLang);
+                            showToast(`Language switched to ${nextLang === 'en' ? 'English' : nextLang === 'ar' ? 'العربية' : 'کوردی'}`);
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Globe className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Language
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {lang === 'en' ? 'English' : lang === 'ar' ? 'العربية' : 'کوردی'}
+                              </p>
+                            </div>
                           </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
                         </div>
 
-                        <div className="bg-white border border-slate-100 rounded-xl p-2.5 flex items-center gap-2 shadow-xs">
-                          <Smile className="w-4 h-4 text-[#006b5a] shrink-0" />
-                          <div>
-                            <h5 className="font-bold text-[10px] text-slate-800">Kids Friendly</h5>
-                            <p className="text-[8px] text-slate-400">Anxiety-free zone</p>
+                        {/* Theme Mode Switch */}
+                        <div 
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Smile className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Theme Mode
+                              </h4>
+                            </div>
                           </div>
+                          
+                          {/* Checked Switch toggle button precisely matching mockup */}
+                          <label className="relative inline-flex items-center cursor-pointer select-none">
+                            <input 
+                              type="checkbox" 
+                              defaultChecked={true}
+                              onChange={(e) => {
+                                showToast(e.target.checked ? "Atmosphere preset: Soft Clinic Light" : "Atmosphere preset: Polar High-Contrast");
+                              }}
+                              className="sr-only peer" 
+                            />
+                            <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0058bc]"></div>
+                          </label>
+                        </div>
+
+                        {/* Notifications */}
+                        <div 
+                          onClick={() => {
+                            showToast("Configuring alert preferences");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Bell className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Notifications
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* Security */}
+                        <div 
+                          onClick={() => {
+                            showToast("Accessing device passcode options");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Lock className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Security & Password
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
                         </div>
                       </div>
                     </div>
 
-                    {/* Interactive Contact Form backing the contacts table */}
-                    <div className="bg-white border border-cyan-100/50 rounded-2xl p-4 p-md space-y-3">
-                      <h4 className="font-headline font-bold text-xs text-blue-900 border-b border-slate-100 pb-2">
-                        {t.contactUs}
+                    {/* Section 3: INFORMATION & SUPPORT */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-2 px-1 select-none text-[#0058bc]">
+                        <HelpCircle className="w-4 h-4 shrink-0" />
+                        <span className="text-[10px] uppercase font-black tracking-wider">
+                          INFORMATION & SUPPORT
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {/* Favorites */}
+                        <div 
+                          onClick={() => {
+                            showToast("Displaying your favorite doctors & clinics list");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Heart className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Favorites
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* Announcements */}
+                        <div 
+                          onClick={() => {
+                            showToast("No new clinical announcements today");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Megaphone className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Announcements
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* Privacy Policy */}
+                        <div 
+                          onClick={() => {
+                            showToast("Viewing medical confidentiality terms");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Shield className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Privacy Policy
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* About Hala Dent */}
+                        <div 
+                          onClick={() => {
+                            showToast("Hala Dent Client Portal Version 3.4.1");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <Info className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                About Hala Dent
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* Clinic Locations */}
+                        <div 
+                          onClick={() => {
+                            setActiveTab('clinics');
+                            showToast("Check our Gulan and Bakhtiary location lists");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                              <MapPin className="w-5 h-5 text-[#0058bc]" />
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                                Clinic Locations
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                        </div>
+
+                        {/* Emergency Contact - explicitly red-styled as in mockup */}
+                        <div 
+                          onClick={() => {
+                            showToast("Dialing 24/7 Dental Emergency Hotline: +964 750 445 9000");
+                          }}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:bg-rose-50/50 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-slate-100 flex items-center justify-center">
+                              <span className="text-rose-600 text-[18px] font-black leading-none mt-1">*</span>
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-bold text-xs text-rose-600">
+                                Emergency Contact
+                              </h4>
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="w-4 h-4 text-rose-300 shrink-0" />
+                        </div>
+
+                      </div>
+                    </div>
+
+                    {/* Quick Log Out to support account toggle */}
+                    <button
+                      onClick={() => {
+                        setIsLoggedIn(false);
+                        showToast('Successfully logged out of Hala Dent');
+                      }}
+                      className="w-full py-3.5 bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 font-extrabold text-xs rounded-2xl active-scale transition-colors text-center shadow-3xs"
+                    >
+                      Log Out of Clinical Account
+                    </button>
+
+                    {/* Social Media Group "Connect with Us" matching screenshot */}
+                    <div className="bg-slate-50 rounded-[28px] p-5 border border-slate-100 shadow-3xs flex flex-col gap-3.5 select-none">
+                      <h4 className="font-headline font-extrabold text-sm text-[#0058bc]">
+                        Connect with Us
                       </h4>
                       
-                      <form onSubmit={handleContactSubmit} className="space-y-2.5">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">Name *</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Karwan Majid"
-                            value={contactForm.name}
-                            onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs"
-                          />
-                        </div>
-
-                        <div className="space-y-1 font-sans">
-                          <label className="text-[10px] font-bold text-slate-500">Phone *</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. +964 750 123 4567"
-                            value={contactForm.phone}
-                            onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">How can we assist you?</label>
-                          <select
-                            value={contactForm.reason}
-                            onChange={(e) => setContactForm({ ...contactForm, reason: e.target.value })}
-                            className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:ring-1 rounded-xl text-xs font-semibold"
+                      <div className="grid grid-cols-5 gap-2 pt-1.5">
+                        {[
+                          { name: 'FACEBOOK', icon: <Globe className="w-5.5 h-5.5 text-[#0058bc]" /> },
+                          { name: 'INSTAGRAM', icon: <Clock className="w-5.5 h-5.5 text-[#0058bc]" /> },
+                          { name: 'X', icon: <X className="w-5.5 h-5.5 text-rose-600" /> },
+                          { name: 'SHARE', icon: <Share2 className="w-5.5 h-5.5 text-[#0058bc]" /> },
+                          { name: 'WHATSAPP', icon: <MessageCircle className="w-5.5 h-5.5 text-emerald-500" /> }
+                        ].map((social, sIdx) => (
+                          <div 
+                            key={sIdx} 
+                            onClick={() => showToast(`Opening Hala Dent's official ${social.name}`)}
+                            className="flex flex-col items-center cursor-pointer group"
                           >
-                            <option value="General Inquiry">General Inquiry</option>
-                            <option value="Severe Tooth Pain">Severe Tooth Pain</option>
-                            <option value="Veneers / Whitening quote">Veneers / Whitening quote</option>
-                            <option value="Orthodontic Scanner booking">Orthodontic Scanner booking</option>
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">Message</label>
-                          <textarea
-                            placeholder="Detailed messages or callback timing preferences..."
-                            value={contactForm.message}
-                            onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                            rows={2}
-                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-1 rounded-xl text-xs font-medium"
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full py-2 bg-gradient-to-tr from-blue-600 to-cyan-500 hover:opacity-95 text-white text-xs font-bold rounded-xl shadow-xs active-scale"
-                        >
-                          Submit Directory Query
-                        </button>
-                      </form>
+                            <div className="w-12 h-12 rounded-full bg-white border border-slate-100 shadow-3xs flex items-center justify-center text-[#0058bc] group-hover:bg-blue-50/50 transition-colors active-scale">
+                              {social.icon}
+                            </div>
+                            <span className="text-[8px] font-black tracking-wide text-slate-500 font-mono text-center mt-2.5">
+                              {social.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
+
                   </div>
                 )}
               </motion.div>
@@ -2433,8 +2639,10 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </>
+          )}
 
-          </div>
+      </div>
   );
 }
 
