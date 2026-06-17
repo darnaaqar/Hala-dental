@@ -68,12 +68,16 @@ import { Category, SubCategory, Clinic, Dentist, Service, Offer, User as UserTyp
 import { supabase } from './lib/supabase';
 
 export default function App() {
-  // Brand Logo selection options (Concept 3: Digital Smile Glow)
+  // Brand Logo selection options (Restore all 5 generated presets)
   const logoOptions = [
-    { id: 3, src: '/src/assets/images/hala_dent_logo_3_1781652573843.jpg', name: 'Digital Smile Glow', desc: 'An ultra-modern, tech-forward glowing digital smile line with subtle light sparkles over a rich navy gradient.' }
+    { id: 1, src: '/src/assets/images/hala_dent_logo_1_1781652549570.jpg', name: 'Premium Teal & Swoosh', desc: 'Minimalist clinical tooth with a stylish premium teal & emerald stroke accent.' },
+    { id: 2, src: '/src/assets/images/hala_dent_logo_2_1781652561541.jpg', name: 'Luxurious Monogram H', desc: 'Monogram representation fusing clinical crown lines and the elegant character H.' },
+    { id: 3, src: '/src/assets/images/hala_dent_logo_3_1781652573843.jpg', name: 'Digital Smile Glow', desc: 'Tech-forward glowing contour emphasizing beautiful healthy dental smiles on deep background.' },
+    { id: 4, src: '/src/assets/images/hala_dent_logo_4_1781652586372.jpg', name: 'Organic Nature Care', desc: 'Pristine clinical blue tooth cradled by soft organic green wellness leaves.' },
+    { id: 5, src: '/src/assets/images/hala_dent_logo_5_1781652597362.jpg', name: 'Royal Crown Silver', desc: 'Prestigious premium classic design featuring clinical crown and medical cross layout.' }
   ];
 
-  const [selectedLogoId, setSelectedLogoId] = useState<number>(3);
+  const [selectedLogoId, setSelectedLogoId] = useState<number>(1);
 
   useEffect(() => {
     localStorage.setItem('hala_dent_selected_logo_id', selectedLogoId.toString());
@@ -2176,6 +2180,63 @@ export default function App() {
                             />
                             <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0058bc]"></div>
                           </label>
+                        </div>
+
+                        {/* Interactive App Logo Style Preset Chooser */}
+                        <div className="bg-white rounded-2xl p-3.5 border border-slate-100 space-y-3 shadow-3xs">
+                          <div className="flex justify-between items-center select-none">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
+                                <span className="text-lg">🎨</span>
+                              </div>
+                              <div>
+                                <h4 className="font-headline font-bold text-xs text-slate-800">
+                                  App Logo & Icon Style
+                                </h4>
+                                <p className="text-[9px] text-[#0058bc] font-bold font-mono">
+                                  Currently: Style {selectedLogoId} - {activeLogo.name}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[9px] bg-blue-50 text-[#0058bc] px-2 py-0.5 rounded-full font-black font-mono">
+                              5 PRESETS
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-5 gap-1.5 select-none pt-1">
+                            {logoOptions.map((logo) => {
+                              const isSelected = logo.id === selectedLogoId;
+                              return (
+                                <button
+                                  key={logo.id}
+                                  onClick={() => {
+                                    setSelectedLogoId(logo.id);
+                                    showToast(`Applied ${logo.name} brand preset!`);
+                                  }}
+                                  className={`p-1 bg-slate-50 border rounded-xl cursor-pointer transition-all active-scale relative ${
+                                    isSelected 
+                                      ? 'border-[#0058bc] bg-blue-50/10 ring-2 ring-[#0058bc]/10' 
+                                      : 'border-slate-100 opacity-60 hover:opacity-100'
+                                  }`}
+                                >
+                                  <img
+                                    src={logo.src}
+                                    alt={logo.name}
+                                    className="w-full aspect-square object-cover rounded-lg border border-slate-200/40"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="text-center mt-1 scale-90">
+                                    <span className={`text-[8px] font-black ${isSelected ? 'text-[#0058bc]' : 'text-slate-400'}`}>
+                                      Style {logo.id}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-1">
+                            Choose between alternative custom designs. The selected icon immediately updates headers, splash screens, and brand colors.
+                          </p>
                         </div>
 
                         {/* Notifications */}
