@@ -113,6 +113,70 @@ export default function App() {
   // Active home layout design preset (Obsolesced - Unified layout is now default for supreme consistency)
   const [homeLayout, setHomeLayout] = useState<number>(1);
 
+  // Active theme layout (light/dark)
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('hala_dent_theme') as 'light' | 'dark') || 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('hala_dent_theme', themeMode);
+  }, [themeMode]);
+
+  // Selected clinic ID for live geographic OSM map Centering
+  const [selectedMapClinicId, setSelectedMapClinicId] = useState<number | string>(1);
+
+  // Formula to produce zero key, zero charge free OSM maps centered around active clinic lat-lon
+  const getOsmMapUrl = (clinicId: number | string) => {
+    // Erbil clinics coordinates:
+    // Clinic 1: Gulan Street (36.2062, 44.0089)
+    // Clinic 2: Bakhtyari Boulevard (36.1911, 43.9985)
+    // Clinic 3: English Village Gate (36.2165, 43.9850)
+    let lat = 36.2062;
+    let lon = 44.0089;
+    if (Number(clinicId) === 2) {
+      lat = 36.1911;
+      lon = 43.9985;
+    } else if (Number(clinicId) === 3) {
+      lat = 36.2165;
+      lon = 43.9850;
+    }
+    
+    const delta = 0.008;
+    const left = lon - delta;
+    const bottom = lat - delta;
+    const right = lon + delta;
+    const top = lat + delta;
+    
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lon}`;
+  };
+
+  // Randomized Selection on App Open / Mounting Session
+  useEffect(() => {
+    try {
+      // Pick a random style (1 to 5) every time app opens
+      const randomStyle = Math.floor(Math.random() * 5) + 1;
+      setHomeLayout(randomStyle);
+      console.log(`[Hala Dent Multi-Layout] Startup Randomizer assigned home view layout Style #${randomStyle}`);
+    } catch (e) {
+      console.warn('Layout randomizer exception ignored:', e);
+    }
+  }, []);
+
+  // Theme variable class maps to style child views consistently
+  const theme = {
+    bg: themeMode === 'light' ? 'bg-[#f7faf9]' : 'bg-[#0f1413]',
+    card: themeMode === 'light' ? 'bg-white border-slate-200/80' : 'bg-slate-900 border-slate-800 text-white',
+    text: themeMode === 'light' ? 'text-[#181c1c]' : 'text-slate-100',
+    textSecondary: themeMode === 'light' ? 'text-slate-500' : 'text-slate-400',
+    subTitle: themeMode === 'light' ? 'text-slate-600' : 'text-slate-300',
+    headerBg: themeMode === 'light' ? 'bg-white/95' : 'bg-slate-900/95 text-white',
+    tabBarBg: themeMode === 'light' ? 'bg-white/95 text-slate-700' : 'bg-slate-900/95 text-slate-100',
+    inputBg: themeMode === 'light' ? 'bg-slate-100/90' : 'bg-slate-800/80',
+    inputText: themeMode === 'light' ? 'text-slate-900' : 'text-white',
+    border: themeMode === 'light' ? 'border-slate-100' : 'border-slate-800',
+    divider: themeMode === 'light' ? 'border-slate-200/60' : 'border-slate-800',
+  };
+
   // Simulation State backing our 12 Database Tables
   const [appointmentsTable, setAppointmentsTable] = useState<Appointment[]>([
     {
@@ -218,23 +282,40 @@ export default function App() {
         }
 
         // 2. Synchronize Dentists/Doctors matching localization settings
-        const { data: rawDoctors, error: doctorsErr } = await supabase.from('doctors').select('*');
+        let rawDoctors = null;
+        let doctorsErr = null;
+        try {
+          const docRes = await supabase.from('doctors').select('*');
+          rawDoctors = docRes.data;
+          doctorsErr = docRes.error;
+          if (doctorsErr || !rawDoctors || rawDoctors.length === 0) {
+            console.log('doctors table empty or errored, attempting fallback to dentists table...');
+            const dentRes = await supabase.from('dentists').select('*');
+            if (dentRes.data && dentRes.data.length > 0) {
+              rawDoctors = dentRes.data;
+              doctorsErr = null;
+            }
+          }
+        } catch (e) {
+          console.warn('Exception querying doctors table:', e);
+        }
+
         if (!doctorsErr && rawDoctors && rawDoctors.length > 0) {
           const mappedDentists: Dentist[] = rawDoctors.map((d: any, index: number) => {
-            const localizedSpecialty = (lang === 'ar' && d.specialty_ar) ? d.specialty_ar : (lang === 'ku' && d.specialty_ku) ? d.specialty_ku : d.specialty;
+            const localizedSpecialty = (lang === 'ar' && d.specialty_ar) ? d.specialty_ar : (lang === 'ku' && d.specialty_ku) ? d.specialty_ku : (d.specialty || d.title);
             const localizedBio = (lang === 'ar' && d.bio_ar) ? d.bio_ar : (lang === 'ku' && d.bio_ku) ? d.bio_ku : d.bio;
             const fallbackSeed = SEED_DENTISTS[index % SEED_DENTISTS.length] || SEED_DENTISTS[0];
             return {
               id: d.id,
               clinic_id: d.clinic_id || fallbackSeed.clinic_id,
-              name: d.display_name,
-              bio: localizedBio || fallbackSeed.bio,
-              image: d.image_url || fallbackSeed.image,
+              name: d.display_name || d.name || d.full_name || fallbackSeed.name,
+              bio: localizedBio || d.bio || fallbackSeed.bio,
+              image: d.image_url || d.image || d.photo_url || fallbackSeed.image,
               title: localizedSpecialty || fallbackSeed.title,
-              rating: d.rating ? parseFloat(parseFloat(d.rating).toFixed(1)) : 4.9,
-              reviews_count: d.review_count || 120,
-              years_of_experience: d.years_of_experience || (fallbackSeed.id === 1 ? 12 : fallbackSeed.id === 2 ? 15 : 8),
-              certification: d.certification || (fallbackSeed.id === 1 ? "Board Certified" : "Oral Surgery Board"),
+              rating: d.rating ? parseFloat(parseFloat(d.rating).toFixed(1)) : (d.rate ? parseFloat(d.rate) : 4.9),
+              reviews_count: d.review_count || d.reviews_count || d.reviews || 120,
+              years_of_experience: d.years_of_experience || d.experience_years || d.experience || (fallbackSeed.id === 1 ? 12 : fallbackSeed.id === 2 ? 15 : 8),
+              certification: d.certification || d.certificate || d.certifications || (fallbackSeed.id === 1 ? "Board Certified" : "Oral Surgery Board"),
               created_at: d.created_at || new Date().toISOString()
             };
           });
@@ -242,27 +323,44 @@ export default function App() {
         }
 
         // 3. Synchronize Services matching localization settings
-        const { data: rawServices, error: servicesErr } = await supabase.from('services').select('*');
+        let rawServices = null;
+        let servicesErr = null;
+        try {
+          const srvRes = await supabase.from('services').select('*');
+          rawServices = srvRes.data;
+          servicesErr = srvRes.error;
+          if (servicesErr || !rawServices || rawServices.length === 0) {
+            console.log('services table empty or errored, attempting fallback to clinical_services...');
+            const altRes = await supabase.from('clinical_services').select('*');
+            if (altRes.data && altRes.data.length > 0) {
+              rawServices = altRes.data;
+              servicesErr = null;
+            }
+          }
+        } catch (e) {
+          console.warn('Exception querying services table:', e);
+        }
+
         if (!servicesErr && rawServices && rawServices.length > 0) {
           const mappedServices: Service[] = rawServices.map((s: any, index: number) => {
-            const localizedName = (lang === 'ar' && s.name_ar) ? s.name_ar : (lang === 'ku' && s.name_ku) ? s.name_ku : s.name;
-            const localizedDesc = (lang === 'ar' && s.description_ar) ? s.description_ar : (lang === 'ku' && s.description_ku) ? s.description_ku : s.description;
+            const localizedName = (lang === 'ar' && s.name_ar) ? s.name_ar : (lang === 'ku' && s.name_ku) ? s.name_ku : (s.name || s.title);
+            const localizedDesc = (lang === 'ar' && s.description_ar) ? s.description_ar : (lang === 'ku' && s.description_ku) ? s.description_ku : (s.description || s.desc);
             const fallbackSeed = SEED_SERVICES[index % SEED_SERVICES.length] || SEED_SERVICES[0];
-            const lowerCat = (s.category_name || '').toLowerCase();
+            const lowerCat = (s.category_name || s.category || '').toLowerCase();
             const categoryId = lowerCat.includes('ortho') ? 2 : lowerCat.includes('implants') ? 3 : lowerCat.includes('cosmetic') || lowerCat.includes('aesthetic') ? 4 : 1;
             return {
               id: s.id,
               name: localizedName,
               description: localizedDesc || fallbackSeed.description,
-              price: s.base_price ? parseFloat(s.base_price) : fallbackSeed.price,
-              duration: s.estimated_duration_minutes || fallbackSeed.duration,
+              price: s.base_price !== undefined ? parseFloat(s.base_price) : s.price !== undefined ? parseFloat(s.price) : fallbackSeed.price,
+              duration: s.estimated_duration_minutes || s.duration || s.duration_minutes || fallbackSeed.duration,
               clinic_id: s.clinic_id || 1,
-              is_available: s.is_active !== false,
-              image: s.image_url || fallbackSeed.image,
+              is_available: s.is_active !== false && s.is_available !== false,
+              image: s.image_url || s.image || s.cover_image || fallbackSeed.image,
               category_id: categoryId,
-              discount_price: s.base_price ? Math.round(parseFloat(s.base_price) * 0.7) : undefined,
-              warranty_months: 12,
-              requires_consultation: lowerCat.includes('surgery') || lowerCat.includes('implants'),
+              discount_price: s.discount_price !== undefined ? parseFloat(s.discount_price) : (s.base_price ? Math.round(parseFloat(s.base_price) * 0.7) : undefined),
+              warranty_months: s.warranty_months !== undefined ? s.warranty_months : 12,
+              requires_consultation: lowerCat.includes('surgery') || lowerCat.includes('implants') || s.requires_consultation === true,
               created_at: s.created_at || new Date().toISOString()
             };
           });
@@ -270,21 +368,38 @@ export default function App() {
         }
 
         // 4. Synchronize Offers/Banners
-        const { data: rawBanners, error: bannersErr } = await supabase.from('banners').select('*').eq('is_active', true);
+        let rawBanners = null;
+        let bannersErr = null;
+        try {
+          const bannerRes = await supabase.from('banners').select('*');
+          rawBanners = bannerRes.data;
+          bannersErr = bannerRes.error;
+          if (bannersErr || !rawBanners || rawBanners.length === 0) {
+            console.log('banners table empty or errored, attempting fallback to offers table...');
+            const offerRes = await supabase.from('offers').select('*');
+            if (offerRes.data && offerRes.data.length > 0) {
+              rawBanners = offerRes.data;
+              bannersErr = null;
+            }
+          }
+        } catch (e) {
+          console.warn('Exception querying banners/offers table:', e);
+        }
+
         if (!bannersErr && rawBanners && rawBanners.length > 0) {
           const mappedOffers: Offer[] = rawBanners.map((b: any, index: number) => {
-            const localizedTitle = (lang === 'ar' && b.title_ar) ? b.title_ar : (lang === 'ku' && b.title_ku) ? b.title_ku : b.title;
-            const localizedSubtitle = (lang === 'ar' && b.subtitle_ar) ? b.subtitle_ar : (lang === 'ku' && b.subtitle_ku) ? b.subtitle_ku : b.subtitle;
-            const localizedBadge = (lang === 'ar' && b.badge_text_ar) ? b.badge_text_ar : (lang === 'ku' && b.badge_text_ku) ? b.badge_text_ku : b.badge_text;
+            const localizedTitle = (lang === 'ar' && b.title_ar) ? b.title_ar : (lang === 'ku' && b.title_ku) ? b.title_ku : (b.title || b.name);
+            const localizedSubtitle = (lang === 'ar' && b.subtitle_ar) ? b.subtitle_ar : (lang === 'ku' && b.subtitle_ku) ? b.subtitle_ku : (b.subtitle || b.description || b.desc);
+            const localizedBadge = (lang === 'ar' && b.badge_text_ar) ? b.badge_text_ar : (lang === 'ku' && b.badge_text_ku) ? b.badge_text_ku : (b.badge_text || (b.discount_percent ? `${b.discount_percent}% OFF` : undefined));
             const fallbackSeed = SEED_OFFERS[index % SEED_OFFERS.length] || SEED_OFFERS[0];
             return {
               id: b.id,
-              clinic_id: 1,
+              clinic_id: b.clinic_id || 1,
               title: localizedTitle,
               description: localizedSubtitle || fallbackSeed.description,
-              discount: localizedBadge || `${b.discount_percent || 30}% OFF`,
-              expiry_date: '2026-09-30',
-              image: b.image_url || fallbackSeed.image,
+              discount: localizedBadge || `${b.discount_percent || 30}% OFF` || fallbackSeed.discount,
+              expiry_date: b.expiry_date || '2026-09-30',
+              image: b.image_url || b.image || fallbackSeed.image,
               created_at: b.created_at || new Date().toISOString()
             };
           });
@@ -295,13 +410,14 @@ export default function App() {
         const { data: rawAppointments, error: appointmentsErr } = await supabase.from('appointments').select('*');
         if (!appointmentsErr && rawAppointments && rawAppointments.length > 0) {
           const mappedAppointments: Appointment[] = rawAppointments.map((ap: any) => {
-            const formattedTime = ap.scheduled_time.substring(0, 5) + ' ' + (parseInt(ap.scheduled_time.substring(0, 2), 10) >= 12 ? 'PM' : 'AM');
+            const appointmentTime = ap.scheduled_time || ap.time || '09:00';
+            const formattedTime = appointmentTime.substring(0, 5) + ' ' + (parseInt(appointmentTime.substring(0, 2), 10) >= 12 ? 'PM' : 'AM');
             return {
               id: ap.id,
-              user_id: 1, // linked to current mock user
+              user_id: ap.user_id || ap.patient_id || 1, // linked to current mock user
               clinic_id: ap.clinic_id || 1,
-              dentist_id: ap.doctor_id || 1,
-              date: ap.scheduled_date,
+              dentist_id: ap.doctor_id || ap.dentist_id || 1,
+              date: ap.scheduled_date || ap.date || '2026-06-20',
               time: formattedTime,
               status: ap.status === 'confirmed' || ap.status === 'completed' ? 'confirmed' : 'pending',
               created_at: ap.created_at || new Date().toISOString()
@@ -496,7 +612,12 @@ export default function App() {
     }
   };
 
-  const t = translations[lang];
+  // Fail-safe translation proxy wrapper to shield against any missing keys in Kurdish/Arabic dictionary lookups
+  const t = new Proxy(translations[lang] || translations['en'], {
+    get: (target, prop: string) => {
+      return (target as any)[prop] || (translations['en'] as any)[prop] || prop;
+    }
+  }) as any;
 
   // Helper trigger to blink data row in Supabase Live Inspector
   const triggerRowHighlight = (table: string, id: number | string) => {
@@ -948,7 +1069,7 @@ export default function App() {
 
   return (
     <div 
-      className="min-h-screen bg-[#f7faf9] text-[#181c1c] flex flex-col relative font-sans selection:bg-blue-200"
+      className={`min-h-screen ${theme.bg} ${theme.text} flex flex-col relative font-sans selection:bg-blue-200`}
       dir={lang === 'en' ? 'ltr' : 'rtl'}
     >
       {/* Toast message channel */}
@@ -1048,7 +1169,7 @@ export default function App() {
         <>
           {/* App Header bar */}
           {activeTab === 'more' ? (
-            <header className="bg-white px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0 font-sans">
+            <header className={`px-5 h-16 border-b ${theme.border} ${theme.headerBg} flex items-center justify-between sticky top-0 z-40 select-none shrink-0 font-sans`}>
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => { setActiveTab('clinics'); showToast('Back to clinics directory'); }} 
@@ -1071,7 +1192,7 @@ export default function App() {
               </div>
             </header>
           ) : (
-            <header className="bg-white/90 backdrop-blur-md px-5 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-40 select-none shrink-0">
+            <header className={`backdrop-blur-md px-5 h-16 border-b ${theme.border} ${theme.headerBg} flex items-center justify-between sticky top-0 z-40 select-none shrink-0`}>
               <div className="flex items-center gap-2">
                 <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-slate-200 bg-white">
                   <img 
@@ -1127,7 +1248,7 @@ export default function App() {
           )}
 
           {/* Interactive Main Body View */}
-          <div className="flex-1 overflow-hidden relative flex flex-col bg-[#f7faf9]">
+          <div className={`flex-1 overflow-hidden relative flex flex-col ${theme.bg}`}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -1135,12 +1256,11 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: lang === 'en' ? -12 : 12 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 text-slate-800"
+                className={`flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar pb-24 ${theme.text}`}
               >
                 
                 {/* 1. VIEW TAB: CLINICS / HOME VIEW */}
-                {activeTab === 'clinics' && renderUnifiedHome()}
-                {false && activeTab === 'clinics' && (
+                {activeTab === 'clinics' && (
                   <div className="animate-fade-in p-4 space-y-4">
                     {/* Compact Gorgeous Switcher */}
                     <div className="bg-white rounded-2xl p-2.5 border border-slate-200/60 shadow-xs flex items-center justify-between gap-2 select-none">
@@ -1372,69 +1492,102 @@ export default function App() {
                         {homeLayout === 3 && (
                           <div className="space-y-4">
                             {/* Embedded GPS Banner */}
-                            <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-2 shadow-3xs">
+                            <div className={`${theme.card} border rounded-3xl p-3.5 space-y-2 shadow-3xs`}>
                               <div className="flex justify-between items-center">
-                                <span className="bg-emerald-500/10 text-emerald-700 font-mono text-[9px] px-2 py-0.5 rounded-md font-bold uppercase">
-                                  GPS Routing: Erbil City
+                                <span className="bg-emerald-500/10 text-emerald-700 font-mono text-[9px] px-2 py-0.5 rounded-md font-extrabold uppercase">
+                                  Free OpenStreetMap Active
                                 </span>
-                                <span className="text-[9px] text-slate-400 font-extrabold font-mono tracking-wider">3 ACTIVE SATELLITES</span>
+                                <span className="text-[9px] text-slate-400 font-extrabold font-mono tracking-wider">SECURE & UNLIMITED</span>
                               </div>
-                              <h4 className="text-xs font-bold text-slate-800 mt-1">Hala Dent GPS Coordinates Linked</h4>
-                              <p className="text-[10px] text-slate-500">Route guidance triggers automatically. Select a target clinic to plan real-time directions.</p>
+                              <h4 className="text-xs font-bold mt-1">Hala Dent Free Map Center</h4>
+                              <p className="text-[10px] text-slate-400 leading-relaxed">Zoom and pan Erbil City below. Selecting a dental branch from the coordinates matrix automatically centers the satellite route map!</p>
                             </div>
 
                             {/* Immersive Map Visual */}
-                            <div className="relative h-56 rounded-3xl overflow-hidden shadow-xs border border-slate-200">
-                              <img
-                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8MnDfu4W9Qm2gh-epGMr6eVix1A6C2oQuZl4vyaYs3PewWFnvuhewuxvYebVFJLvN3YL88wuyAzfSP0KqYasxoisUET5cEvMMA4Jf-P5AImkuu9sIqJbxfrDH9ge9v62vavZ28TIrwoWngvG9O3D3qJIe0M7hf7n59lgNmk0bc5J_9uXEZsrDwgzBofupr80eNbMnChXruiABCNLmdikrk-dXUw3eVOP6Aoo4hk2dRBdwY7Z5cK79jTFNZvYkdyRXUVViFoIfPA"
-                                alt="Erbil City precise locator"
-                                className="w-full h-full object-cover"
+                            <div className="relative h-60 rounded-3xl overflow-hidden shadow-xs border border-slate-200/80 z-10">
+                              <iframe
+                                title="Free OpenStreetMap"
+                                width="100%"
+                                height="100%"
+                                style={{ border: 0 }}
+                                src={getOsmMapUrl(selectedMapClinicId)}
+                                allowFullScreen
                               />
-                              <div className="absolute top-2 right-2 flex flex-col gap-1.5">
-                                <span className="bg-blue-600 text-white font-mono text-[8px] px-2.5 py-0.5 rounded-md font-bold text-center uppercase tracking-wider backdrop-blur-xs">
-                                  GPS Enabled
+                              <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20">
+                                <span className="bg-blue-600/95 backdrop-blur-md text-white font-mono text-[8px] px-2.5 py-1 rounded-md font-bold text-center uppercase tracking-wider backdrop-blur-xs">
+                                  OSM Interactive
                                 </span>
                               </div>
-                              <div className="absolute bottom-2 left-2 right-2">
-                                <div className="bg-white/95 backdrop-blur-md p-2.5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-                                    <MapPin className="w-4 h-4 text-white" />
+                              <div className="absolute bottom-2 left-2 right-2 z-20">
+                                <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2.5 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-7 h-7 rounded-lg bg-[#0058bc] flex items-center justify-center shrink-0">
+                                      <MapPin className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h5 className="font-extrabold text-[10px] text-slate-950 dark:text-white truncate">
+                                        {clinicsTable.find(c => c.id === selectedMapClinicId)?.name || 'Erbil Branch'}
+                                      </h5>
+                                      <p className="text-[9px] text-slate-500 dark:text-slate-400 truncate">
+                                        {clinicsTable.find(c => c.id === selectedMapClinicId)?.address || 'Erbil, Kurdistan'}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div className="min-w-0">
-                                    <h5 className="font-bold text-[10px] text-slate-900 truncate">Erbil Central Route Guidance</h5>
-                                    <p className="text-[9px] text-slate-500 truncate">Calibrating nearest dental diagnostic chairs...</p>
-                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const cl = clinicsTable.find(c => c.id === selectedMapClinicId);
+                                      if (cl) {
+                                        const doc = dentistsTable.find(d => d.clinic_id === cl.id) || dentistsTable[0];
+                                        setSelectedDoctorForBooking(doc);
+                                        showToast(`Initiating slot appointment booking at ${cl.name}`);
+                                      }
+                                    }}
+                                    className="bg-[#0058bc] text-white font-extrabold text-[9px] px-3 py-1.5 rounded-full select-none active-scale whitespace-nowrap"
+                                  >
+                                    Book Branch
+                                  </button>
                                 </div>
                               </div>
                             </div>
 
                             {/* Nearest Branches List with simulated distances */}
                             <div className="space-y-2.5">
-                              <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide px-1">Distance matrix & routing</span>
-                              {clinicsTable.map((cl, idx) => (
-                                <div
-                                  key={cl.id}
-                                  className="bg-white p-3 rounded-2xl border border-slate-100/80 shadow-3xs flex items-center justify-between gap-3 hover:border-slate-300 transition-all active-scale"
-                                >
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                                      <MapPin className="w-4 h-4 text-blue-600" />
+                              <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide px-1">Clinic Locations Matrix</span>
+                              {clinicsTable.map((cl, idx) => {
+                                const isSelected = cl.id === selectedMapClinicId;
+                                return (
+                                  <div
+                                    key={cl.id}
+                                    onClick={() => {
+                                      setSelectedMapClinicId(cl.id);
+                                      showToast(`Panning free map to ${cl.name}`);
+                                    }}
+                                    className={`p-3 rounded-2xl border transition-all active-scale cursor-pointer flex items-center justify-between gap-3 ${
+                                      isSelected
+                                        ? 'bg-blue-50/75 border-blue-500 shadow-3xs dark:bg-blue-950/20'
+                                        : `${theme.card} hover:border-slate-300`
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                        <MapPin className="w-4 h-4" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h5 className="font-extrabold text-[11px] truncate leading-snug">{cl.name}</h5>
+                                        <p className="text-[9px] text-slate-400 truncate font-mono">{cl.address}</p>
+                                      </div>
                                     </div>
-                                    <div className="min-w-0">
-                                      <h5 className="font-extrabold text-[11px] text-slate-800 truncate leading-snug">{cl.name}</h5>
-                                      <p className="text-[9px] text-slate-400 truncate font-mono">{cl.address}</p>
+                                    <div className="text-right shrink-0">
+                                      <span className="block text-[11px] font-extrabold text-[#006b5a] font-sans">
+                                        {cl.id === 1 ? '1.2 km' : cl.id === 2 ? '3.4 km' : '4.8 km'}
+                                      </span>
+                                      <span className="block text-[8px] text-slate-400 font-semibold font-mono">
+                                        {cl.id === 1 ? '4 min drive' : cl.id === 2 ? '10 min drive' : '15 min drive'}
+                                      </span>
                                     </div>
                                   </div>
-                                  <div className="text-right shrink-0">
-                                    <span className="block text-[11px] font-extrabold text-[#006b5a] font-sans">
-                                      {idx === 0 ? '1.2 km' : idx === 1 ? '3.4 km' : '4.8 km'}
-                                    </span>
-                                    <span className="block text-[8px] text-slate-400 font-semibold font-mono">
-                                      {idx === 0 ? '4 min drive' : idx === 1 ? '10 min drive' : '15 min drive'}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
 
                             {/* Quick emergency hotline */}
@@ -2163,8 +2316,11 @@ export default function App() {
                             </div>
                             <div>
                               <h4 className="font-headline font-bold text-xs text-slate-800">
-                                Theme Mode
+                                Dark Mode Theme
                               </h4>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {themeMode === 'dark' ? 'Clinical Dark theme active' : 'Clean Light theme active'}
+                              </p>
                             </div>
                           </div>
                           
@@ -2172,9 +2328,11 @@ export default function App() {
                           <label className="relative inline-flex items-center cursor-pointer select-none">
                             <input 
                               type="checkbox" 
-                              defaultChecked={true}
-                              onChange={(e) => {
-                                showToast(e.target.checked ? "Atmosphere preset: Soft Clinic Light" : "Atmosphere preset: Polar High-Contrast");
+                              checked={themeMode === 'dark'}
+                              onChange={() => {
+                                const nextTheme = themeMode === 'light' ? 'dark' : 'light';
+                                setThemeMode(nextTheme);
+                                showToast(nextTheme === 'dark' ? "Atmosphere preset: Clinical Dark Mode" : "Atmosphere preset: Soft Clinic Light");
                               }}
                               className="sr-only peer" 
                             />
