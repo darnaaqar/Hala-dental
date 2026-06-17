@@ -41,6 +41,10 @@ export interface Clinic {
   sub_category_id?: number | string;
   cover_image: string;
   created_at: string;
+  rating?: number;
+  review_count?: number;
+  status_type?: string;
+  tags?: string[];
 }
 
 export interface Dentist {
@@ -53,6 +57,8 @@ export interface Dentist {
   created_at: string;
   rating?: number;
   reviews_count?: number;
+  years_of_experience?: number;
+  certification?: string;
 }
 
 export interface Service {

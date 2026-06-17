@@ -203,6 +203,10 @@ export default function App() {
               phone: c.phone_number || fallbackSeed.phone,
               logo: c.image_url || fallbackSeed.logo,
               cover_image: c.image_url || fallbackSeed.cover_image,
+              rating: c.rating ? parseFloat(c.rating) : 4.9,
+              review_count: c.review_count !== undefined ? c.review_count : 120,
+              status_type: c.status_type || 'open',
+              tags: c.tags || [],
               created_at: c.created_at || new Date().toISOString()
             };
           });
@@ -225,6 +229,8 @@ export default function App() {
               title: localizedSpecialty || fallbackSeed.title,
               rating: d.rating ? parseFloat(parseFloat(d.rating).toFixed(1)) : 4.9,
               reviews_count: d.review_count || 120,
+              years_of_experience: d.years_of_experience || (fallbackSeed.id === 1 ? 12 : fallbackSeed.id === 2 ? 15 : 8),
+              certification: d.certification || (fallbackSeed.id === 1 ? "Board Certified" : "Oral Surgery Board"),
               created_at: d.created_at || new Date().toISOString()
             };
           });
@@ -530,7 +536,8 @@ export default function App() {
     setNotificationsTable([newNotification, ...notificationsTable]);
 
     // Update clicks metric of category
-    const catId = selectedDoctorForBooking.id === 1 ? 2 : selectedDoctorForBooking.id === 2 ? 1 : 4;
+    const spec = (selectedDoctorForBooking.title || '').toLowerCase();
+    const catId = spec.includes('ortho') ? 2 : spec.includes('surgeon') ? 3 : (spec.includes('cosmetic') || spec.includes('aesthetic') || spec.includes('smile')) ? 4 : 1;
     setCategoriesTable(prev => prev.map(c => c.id === catId ? { ...c, total_clicks: c.total_clicks + 1 } : c));
 
     showToast(`Appointment registered with ${selectedDoctorForBooking.name}! See Database table: appointments`);
@@ -740,10 +747,10 @@ export default function App() {
 
       if (!searchQuery.trim()) {
         if (selectedClinicCategory === 'Emergency') {
-          return cl.id === 2; // Hala Orthodontics represents Emergency check
+          return cl.id === 2 || cl.tags?.includes('emergency') || cl.status_type === 'emergency' || cl.name.toLowerCase().includes('emergency');
         }
         if (selectedClinicCategory === 'Orthodontic') {
-          return cl.id === 2; // Orthodontics
+          return cl.id === 2 || cl.tags?.includes('orthodontic') || cl.name.toLowerCase().includes('orthodontic') || cl.name.toLowerCase().includes('ortho');
         }
       }
       return true;
@@ -818,12 +825,15 @@ export default function App() {
             // Determine clinical tag
             let tagLabel = "Open";
             let tagColorClass = "bg-emerald-50 text-emerald-700 border-emerald-100";
-            if (cl.id === 2) {
+            if (cl.id === 2 || cl.status_type === 'emergency') {
               tagLabel = "Emergency Only";
               tagColorClass = "bg-rose-50 text-rose-700 border-rose-100";
-            } else if (cl.id === 3) {
-              tagLabel = "Closes 6PM";
-              tagColorClass = "bg-slate-100 text-slate-600 border-slate-200";
+            } else if (cl.id === 3 || cl.status_type === 'closing_soon') {
+              tagLabel = "Closes Soon";
+              tagColorClass = "bg-amber-50 text-amber-700 border-amber-100";
+            } else if (cl.status_type === 'closed') {
+              tagLabel = "Closed";
+              tagColorClass = "bg-slate-50 text-slate-400 border-slate-200";
             }
 
             return (
@@ -841,7 +851,7 @@ export default function App() {
                   />
                   <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border border-slate-100">
                     <span className="text-amber-500 text-xs">⭐</span>
-                    <span className="text-slate-800">{cl.id === 2 ? '4.7' : cl.id === 3 ? '4.8' : '4.9'}</span>
+                    <span className="text-slate-800">{cl.rating || (cl.id === 2 ? '4.7' : cl.id === 3 ? '4.8' : '4.9')}</span>
                   </div>
                 </div>
 
@@ -878,7 +888,7 @@ export default function App() {
                       Book Now
                     </button>
                     <button
-                      onClick={() => showToast(`Calibrated Driving Route for GPS: ${cl.name} (${cl.address}). Distance: ${cl.id === 1 ? '1.2km' : '3.4km'}`)}
+                      onClick={() => showToast(`Calibrated Driving Route for GPS: ${cl.name} (${cl.address}). Distance: ${cl.id === 1 ? '1.2km' : cl.id === 2 ? '2.4km' : '3.8km'}`)}
                       className="flex-1 bg-white border border-[#006b5a] text-[#006b5a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
                     >
                       View Map
@@ -1336,7 +1346,7 @@ export default function App() {
                                   <div className="space-y-1">
                                     <div className="flex justify-between items-start">
                                       <h4 className="font-headline font-extrabold text-xs text-slate-800 leading-tight">{cl.name}</h4>
-                                      <span className="text-[10px] font-bold text-[#006b5a] flex items-center gap-0.5 font-sans">★ {cl.id === 2 ? '5.0' : '4.9'}</span>
+                                      <span className="text-[10px] font-bold text-[#006b5a] flex items-center gap-0.5 font-sans">★ {cl.rating || (cl.id === 2 ? '5.0' : '4.9')}</span>
                                     </div>
                                     <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">{cl.description}</p>
                                     <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-100 mt-1 text-[9px] text-[#414755] font-semibold font-mono">
@@ -1722,17 +1732,19 @@ export default function App() {
                         const isFav = favoritesTable.some(f => f.dentist_id === doc.id);
                         
                         // Custom features to display Screen 5 metadata bullet points
-                        let expYears = "12 yrs exp";
-                        let specialBadges = ["Board Certified", "Invisalign Gold"];
-                        if (doc.id === 1) {
-                          expYears = "15 yrs exp";
-                          specialBadges = ["Chief Implantologist", "Dental Arts Tutor"];
-                        } else if (doc.id === 2) {
-                          expYears = "8 yrs exp";
-                          specialBadges = ["Pediatric Specialist", "Painless Care"];
-                        } else {
-                          expYears = "10 yrs exp";
-                          specialBadges = ["General Practitioner", "3D Scan Expert"];
+                        let expYears = doc.years_of_experience ? `${doc.years_of_experience} yrs exp` : "12 yrs exp";
+                        let specialBadges = doc.certification ? [doc.certification, "Licensed Practice"] : ["Board Certified", "Invisalign Gold"];
+                        if (!doc.years_of_experience && !doc.certification) {
+                          if (doc.id === 1) {
+                            expYears = "15 yrs exp";
+                            specialBadges = ["Chief Implantologist", "Dental Arts Tutor"];
+                          } else if (doc.id === 2) {
+                            expYears = "8 yrs exp";
+                            specialBadges = ["Pediatric Specialist", "Painless Care"];
+                          } else {
+                            expYears = "10 yrs exp";
+                            specialBadges = ["General Practitioner", "3D Scan Expert"];
+                          }
                         }
 
                         return (
@@ -1851,7 +1863,7 @@ export default function App() {
                         </p>
                         <button
                           onClick={() => {
-                            const teethWhitening = servicesTable.find(s => s.id === 1);
+                            const teethWhitening = servicesTable.find(s => s.id === 1 || s.name.toLowerCase().includes('whitening') || s.name.toLowerCase().includes('laser')) || servicesTable[0];
                             if (teethWhitening) setSelectedServiceDetail(teethWhitening);
                           }}
                           className="w-fit bg-white text-blue-900 text-[10px] font-bold px-3 py-1 rounded-full active-scale"
