@@ -483,6 +483,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string; time: string }>>([
     { sender: 'bot', text: 'Slaw! Welcome to Hala Dent instant assistant. Ask me anything about our clinics, doctors, or laser whitening discounts.', time: '10:15 AM' }
   ]);
+  const [isBotTyping, setIsBotTyping] = useState(false);
 
   // Flash UI banners
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -750,35 +751,56 @@ export default function App() {
   };
 
   // Live Chat Smart Inquiry Bot Reply Generator
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const rawMessage = textToSend || chatInquiry;
     if (!rawMessage.trim()) return;
 
-    const userMsg = { sender: 'user' as const, text: rawMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-    setChatMessages((prev) => [...prev, userMsg]);
+    const userMsg = { 
+      sender: 'user' as const, 
+      text: rawMessage, 
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+    };
+    
+    const updatedMessages = [...chatMessages, userMsg];
+    setChatMessages(updatedMessages);
     setChatInquiry('');
+    setIsBotTyping(true);
 
-    // Instant realistic medical clinic bot answering system
-    setTimeout(() => {
-      let replyText = "Understood. Our customer service is notified. Would you like to check our clinics or top dentists instead?";
-      const lower = rawMessage.toLowerCase();
-      if (lower.includes('whitening') || lower.includes('tbyyd') || lower.includes('bleach')) {
-        replyText = "Hala Dent is running a 30% discount on laser whitening! You can view this offer under the 'More' section or book teeth whitening directly with Dr. Sara Hawar.";
-      } else if (lower.includes('price') || lower.includes('cost') || lower.includes('daea') || lower.includes('نرخ')) {
-        replyText = "Hala Dent strives for transparency. Our standard scale is $80, consultation is $150 (completely credited if treatment is started), and teeth whitening is promo priced at $245.";
-      } else if (lower.includes('braces') || lower.includes('ortho') || lower.includes('تعديل') || lower.includes('تەلی ددان')) {
-        replyText = "We utilize intra-oral 3D scans for custom clear aligners. This is led by Dr. Sarah Khalil at Gulan Main St clinic. Would you like us to schedule a 3D assessment?";
-      } else if (lower.includes('emergency') || lower.includes('pain') || lower.includes('وجع') || lower.includes('ئازار')) {
-        replyText = "For extreme urgent toothaches, please tap the red EMERGENCY block at the top of the app home screen to dial our active 24/7 dentists directly.";
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: rawMessage,
+          history: updatedMessages.slice(-10)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+
+      const data = await response.json();
+      const botReplyText = data.reply || "I apologize, but I encountered an error. Please try again or call our Erbil office!";
 
       const botReply = {
         sender: 'bot' as const,
-        text: replyText,
+        text: botReplyText,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setChatMessages((prev) => [...prev, botReply]);
-    }, 1000);
+    } catch (err) {
+      console.error("Failed to connect to dental assistant AI server:", err);
+      const fallbackReplyText = "Zor Spas! I received your inquiry, but my live AI response bridge is verifying connection settings right now. You can check our branch details or call us directly at +964 (0) 750 123 4567 for immediate assistance!";
+      const botReply = {
+        sender: 'bot' as const,
+        text: fallbackReplyText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages((prev) => [...prev, botReply]);
+    } finally {
+      setIsBotTyping(false);
+    }
   };
 
   // Toggle favorite trigger for doctors
@@ -1262,39 +1284,7 @@ export default function App() {
                 {/* 1. VIEW TAB: CLINICS / HOME VIEW */}
                 {activeTab === 'clinics' && (
                   <div className="animate-fade-in p-4 space-y-4">
-                    {/* Compact Gorgeous Switcher */}
-                    <div className="bg-white rounded-2xl p-2.5 border border-slate-200/60 shadow-xs flex items-center justify-between gap-2 select-none">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider font-mono">🏠 Design Preset Switcher</span>
-                        <span className="text-xs text-blue-600 font-extrabold">
-                          {homeLayout === 1 && '1. Modern Bento Grid'}
-                          {homeLayout === 2 && '2. Directory List'}
-                          {homeLayout === 3 && '3. Intelligent Map Hub'}
-                          {homeLayout === 4 && '4. Offers & Advice Feed'}
-                          {homeLayout === 5 && '5. Direct Action Center'}
-                        </span>
-                      </div>
-                      <div className="flex bg-slate-100 p-1 rounded-xl">
-                        {[1, 2, 3, 4, 5].map((idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              setHomeLayout(idx);
-                              showToast(`Loaded layout style preset ${idx}: ${idx === 1 ? 'Bento' : idx === 2 ? 'Directory' : idx === 3 ? 'Map Hub' : idx === 4 ? 'Offers' : 'Direct'}`);
-                            }}
-                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all relative active-scale flex items-center justify-center ${
-                              homeLayout === idx
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            {idx}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Shared Search Bar under switcher (if not Layout 5 which has a custom minimalist look) */}
+                    {/* Shared Search Bar (if not Layout 5 which has a custom minimalist look) */}
                     {homeLayout !== 5 && (
                       <div className="relative">
                         <Search className="absolute top-3.5 left-3.5 w-4 h-4 text-slate-400" />
@@ -1303,12 +1293,12 @@ export default function App() {
                           placeholder={t.searchPlaceholder}
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-2xl text-xs font-medium placeholder-slate-400"
+                          className={`w-full pl-10 pr-4 py-2.5 ${theme.inputBg} ${theme.inputText} border ${theme.border} focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-2xl text-xs font-medium placeholder-slate-400`}
                         />
                         {searchQuery && (
                           <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute right-3 top-3 bg-slate-200 text-slate-500 rounded-full p-0.5 hover:bg-slate-300"
+                            className="absolute right-3 top-3 bg-slate-200 dark:bg-slate-705 text-slate-505 rounded-full p-0.5 hover:bg-slate-300"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -2129,6 +2119,16 @@ export default function App() {
                           <span className="text-[9px] text-slate-400 px-1">{msg.time}</span>
                         </div>
                       ))}
+                      {isBotTyping && (
+                        <div className="flex flex-col max-w-[240px] space-y-1 mr-auto items-start animate-pulse">
+                          <div className="p-2.5 rounded-2xl text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200/60 text-slate-500 rounded-tl-none flex items-center gap-1.5 shadow-sm">
+                            <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                          </div>
+                          <span className="text-[9px] text-slate-400 px-1">AI Assistant is typing...</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Preconfigured smart clinical queries */}
