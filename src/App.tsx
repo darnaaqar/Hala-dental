@@ -113,11 +113,16 @@ export default function App() {
 
   // Active theme layout (light/dark)
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('hala_dent_theme') as 'light' | 'dark') || 'light';
+    return (localStorage.getItem('hala_dent_theme') as 'light' | 'dark') || 'dark';
   });
 
   useEffect(() => {
     localStorage.setItem('hala_dent_theme', themeMode);
+    if (themeMode === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [themeMode]);
 
   // Selected clinic ID for live geographic OSM map Centering
@@ -779,41 +784,73 @@ export default function App() {
     setChatInquiry('');
     setIsBotTyping(true);
 
+    let replied = false;
+
+    // 1. Try invoking the Supabase Edge Function "dentist-ai" as requested by user
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: rawMessage,
-          history: updatedMessages.slice(-10)
-        })
+      console.log("Attempting to invoke Supabase edge function 'dentist-ai'...");
+      const { data, error } = await supabase.functions.invoke('dentist-ai', {
+        body: { message: rawMessage }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!error && data && (data.reply || data.generated_text)) {
+        const botReplyText = data.reply || data.generated_text;
+        const botReply = {
+          sender: 'bot' as const,
+          text: botReplyText,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages((prev) => [...prev, botReply]);
+        replied = true;
+      } else {
+        if (error) {
+          console.warn("Supabase Edge Function returned error:", error);
+        }
       }
-
-      const data = await response.json();
-      const botReplyText = data.reply || "I apologize, but I encountered an error. Please try again or call our Erbil office!";
-
-      const botReply = {
-        sender: 'bot' as const,
-        text: botReplyText,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setChatMessages((prev) => [...prev, botReply]);
-    } catch (err) {
-      console.error("Failed to connect to dental assistant AI server:", err);
-      const fallbackReplyText = "Zor Spas! I received your inquiry, but my live AI response bridge is verifying connection settings right now. You can check our branch details or call us directly at +964 (0) 750 123 4567 for immediate assistance!";
-      const botReply = {
-        sender: 'bot' as const,
-        text: fallbackReplyText,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setChatMessages((prev) => [...prev, botReply]);
-    } finally {
-      setIsBotTyping(false);
+    } catch (sbErr) {
+      console.warn("Supabase local/remote function not available yet or pending deployment:", sbErr);
     }
+
+    // 2. Fall back to local server proxy '/api/chat' if Supabase function not yet deployed
+    if (!replied) {
+      try {
+        console.log("Using backup server-side AI endpoint...");
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: rawMessage,
+            history: updatedMessages.slice(-10)
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const botReplyText = data.reply || "I apologize, but I encountered an error. Please try again or call our Erbil office!";
+
+        const botReply = {
+          sender: 'bot' as const,
+          text: botReplyText,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages((prev) => [...prev, botReply]);
+        replied = true;
+      } catch (err) {
+        console.error("Failed to connect to dental assistant AI server:", err);
+        const fallbackReplyText = "Zor Spas! I received your inquiry, but my live AI response bridge is verifying connection settings right now. You can check our branch details or call us directly at +964 (0) 750 123 4567 for immediate assistance!";
+        const botReply = {
+          sender: 'bot' as const,
+          text: fallbackReplyText,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages((prev) => [...prev, botReply]);
+      }
+    }
+
+    setIsBotTyping(false);
   };
 
   // Toggle favorite trigger for doctors
@@ -984,22 +1021,22 @@ export default function App() {
           {filteredByTag.map((cl, idx) => {
             // Determine clinical tag
             let tagLabel = "Open";
-            let tagColorClass = "bg-emerald-50 text-emerald-700 border-emerald-100";
+            let tagColorClass = "bg-emerald-50 dark:bg-emerald-950/25 text-[#006b5a] dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40 font-bold";
             if (cl.id === 2 || cl.status_type === 'emergency') {
               tagLabel = "Emergency Only";
-              tagColorClass = "bg-rose-50 text-rose-700 border-rose-100";
+              tagColorClass = "bg-rose-50 dark:bg-rose-950/25 text-rose-700 dark:text-rose-400 border-rose-100 dark:border-rose-900/40";
             } else if (cl.id === 3 || cl.status_type === 'closing_soon') {
               tagLabel = "Closes Soon";
-              tagColorClass = "bg-amber-50 text-amber-700 border-amber-100";
+              tagColorClass = "bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/40";
             } else if (cl.status_type === 'closed') {
               tagLabel = "Closed";
-              tagColorClass = "bg-slate-50 text-slate-400 border-slate-200";
+              tagColorClass = "bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-450 border-slate-200 dark:border-slate-700/60";
             }
 
             return (
               <div 
                 key={cl.id} 
-                className="bg-white rounded-[32px] overflow-hidden border border-slate-200/80 shadow-3xs hover:border-slate-300 transition-all flex flex-col"
+                className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden border border-slate-200/80 dark:border-slate-800 shadow-3xs hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col"
               >
                 {/* Cover Image with Rating Badge layered top-right */}
                 <div className="h-44 relative">
@@ -1009,16 +1046,16 @@ export default function App() {
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border border-slate-100">
+                  <div className="absolute top-3 right-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border border-slate-100 dark:border-slate-800">
                     <span className="text-amber-500 text-xs">⭐</span>
-                    <span className="text-slate-800">{cl.rating || (cl.id === 2 ? '4.7' : cl.id === 3 ? '4.8' : '4.9')}</span>
+                    <span className="text-slate-800 dark:text-slate-200">{cl.rating || (cl.id === 2 ? '4.7' : cl.id === 3 ? '4.8' : '4.9')}</span>
                   </div>
                 </div>
 
                 {/* Info and Actions */}
                 <div className="p-4.5 space-y-3.5">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-headline font-black text-sm text-slate-900 leading-tight">
+                    <h3 className="font-headline font-black text-sm text-slate-900 dark:text-white leading-tight">
                       {cl.name}
                     </h3>
                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-mono font-extrabold border ${tagColorClass}`}>
@@ -1026,12 +1063,12 @@ export default function App() {
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-slate-500 leading-normal font-medium">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal font-medium">
                     {cl.description}
                   </p>
 
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold font-mono pb-1 border-b border-slate-100">
-                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-mono pb-1 border-b border-slate-100 dark:border-slate-800">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>{cl.address}</span>
                   </div>
 
@@ -1049,7 +1086,7 @@ export default function App() {
                     </button>
                     <button
                       onClick={() => showToast(`Calibrated Driving Route for GPS: ${cl.name} (${cl.address}). Distance: ${cl.id === 1 ? '1.2km' : cl.id === 2 ? '2.4km' : '3.8km'}`)}
-                      className="flex-1 bg-white border border-[#006b5a] text-[#006b5a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
+                      className="flex-1 bg-white dark:bg-slate-900 border border-[#006b5a] text-[#006b5a] dark:text-[#00ab8a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
                     >
                       View Map
                     </button>
@@ -1078,7 +1115,7 @@ export default function App() {
             </a>
             <a
               href="#"
-              onClick={(e) => { e.preventDefault(); showToast('Heading to Instagram'); }}
+              onClick={(e) => { e.preventDefault(); showToast('Heading to Hala Dent @hala_dent Instagram'); }}
               className="flex flex-col items-center gap-1 text-slate-500 hover:text-pink-600"
             >
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
@@ -1088,11 +1125,11 @@ export default function App() {
             </a>
             <a
               href="#"
-              onClick={(e) => { e.preventDefault(); showToast('App link copier triggered'); }}
+              onClick={(e) => { e.preventDefault(); showToast('App link generator copied to clipboard'); }}
               className="flex flex-col items-center gap-1 text-slate-500 hover:text-slate-900"
             >
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
-                <Share2 className="w-4 h-4 text-slate-700" />
+                <Share2 className="w-4 h-4 text-slate-700 dark:text-slate-300" />
               </div>
               <span className="text-[9px] font-bold">Share App</span>
             </a>
@@ -1116,9 +1153,9 @@ export default function App() {
       )}
 
       {!isLoggedIn ? (
-        <div className="flex-1 w-full flex flex-col justify-between items-center bg-slate-50 relative p-8 select-none">
+        <div className="flex-1 w-full flex flex-col justify-between items-center bg-slate-50 dark:bg-[#0f1413] relative p-8 select-none">
           <div className="w-full max-w-sm flex-1 flex flex-col justify-center items-center py-6">
-            <div className="relative w-24 h-24 rounded-full shadow-lg flex items-center justify-center bg-white border-2 border-slate-100 overflow-hidden mx-auto">
+            <div className="relative w-24 h-24 rounded-full shadow-lg flex items-center justify-center bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 overflow-hidden mx-auto">
               <img 
                 src={activeLogo.src} 
                 alt="Hala Dent Logo" 
@@ -1127,30 +1164,30 @@ export default function App() {
               />
             </div>
             
-            <h1 className="font-headline font-extrabold text-3xl text-neutral-800 tracking-tight mt-5 text-center">
+            <h1 className="font-headline font-extrabold text-3xl text-neutral-800 dark:text-neutral-100 tracking-tight mt-5 text-center">
               {lang === 'en' ? 'Hala Dent' : lang === 'ar' ? 'هلا دنت' : 'هالا دێنت'}
             </h1>
             <p className="text-xs text-slate-400 font-bold tracking-wide mt-1 text-center font-serif">
-              {lang === 'en' ? 'Premium Dental Care' : lang === 'ar' ? 'رعايـة أسنان مميـزة' : 'چاودێری ددانی پێشکەوتوو'}
+               {lang === 'en' ? 'Premium Dental Care' : lang === 'ar' ? 'رعايـة أسنان مميـزة' : 'چاودێری ددانی پێشکەوتوو'}
             </p>
 
             {/* Quick Language switcher inside splash */}
-            <div className="flex items-center bg-white p-1 rounded-full text-xs shrink-0 select-none border border-slate-200 mt-5 shadow-3xs">
+            <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-full text-xs shrink-0 select-none border border-slate-200 dark:border-slate-800 mt-5 shadow-3xs">
               <button
                 onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
-                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 EN
               </button>
               <button
                 onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
-                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 عربي
               </button>
               <button
                 onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
-                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 کوردی
               </button>
@@ -1166,14 +1203,14 @@ export default function App() {
                   showToast('Slaw! Welcome back to Hala Dent.');
                 }, 800);
               }}
-              className="bg-white p-6 rounded-[32px] border border-slate-200/80 shadow-md w-full max-w-sm mt-8 space-y-4 flex flex-col"
+              className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-200/80 dark:border-slate-800 shadow-md w-full max-w-sm mt-8 space-y-4 flex flex-col"
             >
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
                   {lang === 'en' ? 'Phone Number' : lang === 'ar' ? 'رقم الهاتف' : 'ژمارەی مۆبایل'}
                 </label>
-                <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20">
-                  <span className="bg-slate-100 px-3.5 py-2.5 text-xs text-slate-500 font-bold border-r border-slate-200 flex items-center shrink-0">
+                <div className="flex bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20">
+                  <span className="bg-slate-100 dark:bg-slate-700 px-3.5 py-2.5 text-xs text-slate-500 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700 flex items-center shrink-0">
                     +964
                   </span>
                   <input
@@ -1182,7 +1219,7 @@ export default function App() {
                     value={loginPhone}
                     onChange={(e) => setLoginPhone(e.target.value)}
                     required
-                    className="w-full px-3 py-2.5 bg-transparent focus:outline-none text-xs font-semibold"
+                    className="w-full px-3 py-2.5 bg-transparent focus:outline-none text-xs font-semibold text-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -1191,12 +1228,12 @@ export default function App() {
                 type="submit"
                 className="bg-[#0058bc] hover:bg-[#00479e] text-white font-extrabold text-xs py-3.5 rounded-full w-full shadow-md active-scale transition-colors text-center"
               >
-                {lang === 'en' ? 'Continue' : lang === 'ar' ? 'متابعة' : 'بەردەوامبە'} &rarr;
+                {lang === 'en' ? 'Continue' : lang === 'ar' ? 'متابعة' : 'بەردەوامبە'} &arr;
               </button>
             </form>
           </div>
 
-          <p className="text-[10px] text-slate-300 font-mono text-center tracking-wide mt-auto">
+          <p className="text-[10px] text-slate-300 dark:text-slate-600 font-mono text-center tracking-wide mt-auto">
             Device ID: [Hidden Signature]
           </p>
         </div>
@@ -1208,20 +1245,40 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => { setActiveTab('clinics'); showToast('Back to clinics directory'); }} 
-                  className="p-1 text-[#0058bc] hover:bg-slate-50 rounded-full shrink-0 transition-colors"
+                  className="p-1 text-blue-600 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full shrink-0 transition-colors"
                 >
                   <ArrowLeft className="w-5.5 h-5.5 stroke-[2.5]" />
                 </button>
-                <span className="font-headline font-black text-lg text-[#0058bc]">
+                <span className="font-headline font-black text-lg text-blue-600 dark:text-blue-400">
                   Hala Dent
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 text-[#0058bc]">
-                <button onClick={() => showToast('Search settings')} className="p-1 hover:bg-slate-50 rounded-full transition-colors active-scale">
+              <div className="flex items-center gap-3 text-blue-600 dark:text-blue-400">
+                {/* Theme Switcher Button */}
+                <button
+                  onClick={() => {
+                    const nextTheme = themeMode === 'light' ? 'dark' : 'light';
+                    setThemeMode(nextTheme);
+                    showToast(nextTheme === 'dark' ? "Atmosphere preset: Clinical Dark Mode" : "Atmosphere preset: Soft Clinic Light");
+                  }}
+                  className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors active-scale shrink-0"
+                  title="Toggle Atmosphere Theme"
+                >
+                  {themeMode === 'light' ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 animate-pulse text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707m2.828 9.9a5 5 0 117.072-7.072 5 5 0 01-7.072 7.072z" />
+                    </svg>
+                  )}
+                </button>
+                <button onClick={() => showToast('Search settings')} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors active-scale">
                   <Search className="w-5 h-5 stroke-[2.5]" />
                 </button>
-                <button onClick={() => { setActiveTab('clinics'); }} className="p-1 hover:bg-slate-50 rounded-full transition-colors active-scale">
+                <button onClick={() => { setActiveTab('clinics'); }} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors active-scale">
                   <Home className="w-5 h-5 stroke-[2.5]" />
                 </button>
               </div>
@@ -1229,7 +1286,7 @@ export default function App() {
           ) : (
             <header className={`backdrop-blur-md px-5 h-16 border-b ${theme.border} ${theme.headerBg} flex items-center justify-between sticky top-0 z-40 select-none shrink-0`}>
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-slate-200 bg-white">
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                   <img 
                     src={activeLogo.src} 
                     alt="Hala Dent Logo" 
@@ -1237,33 +1294,54 @@ export default function App() {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <h2 className="font-headline font-extrabold text-base text-blue-600 tracking-tight">
+                <h2 className="font-headline font-extrabold text-base text-blue-600 dark:text-blue-400 tracking-tight">
                   {t.title}
                 </h2>
               </div>
 
               <div className="flex items-center gap-2">
                 {/* Quick Language Toggle Selector directly inside header */}
-                <div className="flex items-center bg-slate-100 p-0.5 rounded-full text-xs shrink-0 select-none border border-slate-200">
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full text-xs shrink-0 select-none border border-slate-200 dark:border-slate-700">
                   <button
                     onClick={() => { setLang('en'); showToast('Language swapped to English'); }}
-                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'en' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
                     EN
                   </button>
                   <button
                     onClick={() => { setLang('ar'); showToast('تم تغيير اللغة للعربية'); }}
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ar' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
                     عربي
                   </button>
                   <button
                     onClick={() => { setLang('ku'); showToast('زمان گۆڕدرا بۆ کوردی'); }}
-                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${lang === 'ku' ? 'bg-[#0058bc] text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
                     کوردی
                   </button>
                 </div>
+
+                {/* Theme Switcher Button */}
+                <button
+                  onClick={() => {
+                    const nextTheme = themeMode === 'light' ? 'dark' : 'light';
+                    setThemeMode(nextTheme);
+                    showToast(nextTheme === 'dark' ? "Atmosphere preset: Clinical Dark Mode" : "Atmosphere preset: Soft Clinic Light");
+                  }}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-blue-600 dark:text-blue-400 active-scale shrink-0"
+                  title="Toggle Atmosphere Theme"
+                >
+                  {themeMode === 'light' ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 animate-pulse text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707m2.828 9.9a5 5 0 117.072-7.072 5 5 0 01-7.072 7.072z" />
+                    </svg>
+                  )}
+                </button>
 
                 {/* Notification Icon Badge */}
                 <button
@@ -1271,7 +1349,7 @@ export default function App() {
                     setActiveTab('more');
                     showToast('Viewing Patient Notifications');
                   }}
-                  className="p-2 hover:bg-slate-100 rounded-full text-[#0058bc] active-scale relative shrink-0"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-blue-600 dark:text-blue-400 active-scale relative shrink-0"
                 >
                   <Bell className="w-5 h-5" />
                   {notificationsTable.some(n => !n.is_read) && (
@@ -1311,7 +1389,7 @@ export default function App() {
                         {searchQuery && (
                           <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute right-3 top-3 bg-slate-200 dark:bg-slate-705 text-slate-505 rounded-full p-0.5 hover:bg-slate-300"
+                            className="absolute right-3 top-3 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-full p-0.5 hover:bg-slate-300"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -1360,31 +1438,31 @@ export default function App() {
                             {/* Bento B: Mini Maps Locator */}
                             <div
                               onClick={() => { setActiveTab('clinics'); showToast('Interactive clinics locator active'); }}
-                              className="col-span-1 bg-white border border-slate-200/70 rounded-3xl p-3 flex flex-col justify-between align-start shadow-3xs cursor-pointer hover:border-blue-300 transition-all active-scale h-36"
+                              className="col-span-1 bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 rounded-3xl p-3 flex flex-col justify-between align-start shadow-3xs cursor-pointer hover:border-blue-300 dark:hover:border-blue-500 transition-all active-scale h-36"
                             >
-                              <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                                <MapPin className="w-4 h-4 text-blue-600" />
+                              <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
+                                <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                               </div>
                               <div>
-                                <h5 className="font-bold text-[11px] text-slate-800">Erbil Map</h5>
-                                <p className="text-[9px] text-slate-400 mt-0.5 truncate">Gulan St, Erbil</p>
+                                <h5 className="font-bold text-[11px] text-slate-800 dark:text-slate-100">Erbil Map</h5>
+                                <p className="text-[9px] text-slate-400 dark:text-slate-400 mt-0.5 truncate">Gulan St, Erbil</p>
                               </div>
-                              <span className="text-[9px] font-extrabold text-blue-600 flex items-center gap-0.5">3 Branches →</span>
+                              <span className="text-[9px] font-extrabold text-blue-600 dark:text-blue-400 flex items-center gap-0.5">3 Branches →</span>
                             </div>
 
                             {/* Bento C: Emergency Voice Dial */}
                             <div 
                               onClick={() => { showToast('Simulated direct voice dialed +964 750 123 4567'); }}
-                              className="col-span-1 bg-rose-50 border border-rose-100/70 rounded-3xl p-3 flex flex-col justify-between align-start shadow-3xs cursor-pointer hover:bg-rose-100/50 transition-all active-scale h-36"
+                              className="col-span-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-100/70 dark:border-rose-900/45 rounded-3xl p-3 flex flex-col justify-between align-start shadow-3xs cursor-pointer hover:bg-rose-100/50 dark:hover:bg-rose-900/30 transition-all active-scale h-36"
                             >
                               <div className="w-8 h-8 rounded-full bg-rose-500 text-white flex items-center justify-center animate-pulse">
                                 <Phone className="w-4 h-4 fill-white" />
                               </div>
                               <div>
-                                <h5 className="font-bold text-[11px] text-rose-800">{t.emergencyButton}</h5>
-                                <p className="text-[9px] text-rose-500 mt-0.5">Immediate 24/7 Voice Line</p>
+                                <h5 className="font-bold text-[11px] text-rose-800 dark:text-rose-300">{t.emergencyButton}</h5>
+                                <p className="text-[9px] text-rose-500 dark:text-rose-400 mt-0.5">Immediate 24/7 Voice Line</p>
                               </div>
-                              <span className="text-[9px] font-extrabold text-rose-600">Simulate Dial →</span>
+                              <span className="text-[9px] font-extrabold text-rose-600 dark:text-rose-400">Simulate Dial →</span>
                             </div>
 
                             {/* Bento D: Promo highlight (col-span-2) */}
@@ -1420,7 +1498,7 @@ export default function App() {
                                       showToast(`Filtering directory by ${cat.name}`);
                                       setActiveTab('services');
                                     }}
-                                    className="flex-none bg-white font-bold text-[10px] text-slate-700 px-3.5 py-1.5 rounded-full border border-slate-200/60 hover:bg-slate-50 transition-colors shadow-3xs flex items-center gap-1.5"
+                                    className="flex-none bg-white dark:bg-slate-800 font-bold text-[10px] text-slate-700 dark:text-slate-200 px-3.5 py-1.5 rounded-full border border-slate-200/60 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-3xs flex items-center gap-1.5"
                                   >
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                                     {cat.name}
@@ -1436,18 +1514,18 @@ export default function App() {
                                 {dentistsTable.map((doc) => (
                                   <div
                                     key={doc.id}
-                                    className="flex-none w-32 bg-white border border-slate-200/50 p-2.5 rounded-2xl text-center shadow-3xs relative"
+                                    className="flex-none w-32 bg-white dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700 p-2.5 rounded-2xl text-center shadow-3xs relative"
                                   >
                                     <img
                                       src={doc.image}
                                       alt={doc.name}
                                       className="w-12 h-12 rounded-full object-cover mx-auto border border-emerald-400 shadow-3xs mb-1.5"
                                     />
-                                    <h6 className="font-extrabold text-[10px] text-slate-800 truncate">{doc.name}</h6>
-                                    <p className="text-[8px] text-slate-400 truncate">{doc.title}</p>
+                                    <h6 className="font-extrabold text-[10px] text-slate-800 dark:text-slate-100 truncate">{doc.name}</h6>
+                                    <p className="text-[8px] text-slate-400 dark:text-slate-400 truncate">{doc.title}</p>
                                     <button
                                       onClick={() => { setSelectedDoctorForBooking(doc); }}
-                                      className="mt-2 w-full py-1 bg-blue-50 hover:bg-blue-100 text-[#0058bc] font-extrabold text-[9px] rounded-lg transition-colors"
+                                      className="mt-2 w-full py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 text-[#0058bc] dark:text-blue-400 font-extrabold text-[9px] rounded-lg transition-colors"
                                     >
                                       Book Now
                                     </button>
@@ -1462,7 +1540,7 @@ export default function App() {
                               {clinicsTable.map((cl) => (
                                 <div
                                   key={cl.id}
-                                  className="bg-white rounded-3xl p-3 border border-slate-200/70 shadow-3xs space-y-2.5 hover:border-slate-300 transition-colors"
+                                  className="bg-white dark:bg-slate-900 rounded-3xl p-3 border border-slate-200/70 dark:border-slate-800/80 shadow-3xs space-y-2.5 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
                                 >
                                   <div className="relative h-28 rounded-2xl overflow-hidden">
                                     <img src={cl.cover_image} alt={cl.name} className="w-full h-full object-cover" />
@@ -1472,16 +1550,16 @@ export default function App() {
                                   </div>
                                   <div className="space-y-1">
                                     <div className="flex justify-between items-start">
-                                      <h4 className="font-headline font-extrabold text-xs text-slate-800 leading-tight">{cl.name}</h4>
-                                      <span className="text-[10px] font-bold text-[#006b5a] flex items-center gap-0.5 font-sans">★ {cl.rating || (cl.id === 2 ? '5.0' : '4.9')}</span>
+                                      <h4 className="font-headline font-extrabold text-xs text-slate-800 dark:text-slate-100 leading-tight">{cl.name}</h4>
+                                      <span className="text-[10px] font-bold text-[#006b5a] dark:text-emerald-400 flex items-center gap-0.5 font-sans">★ {cl.rating || (cl.id === 2 ? '5.0' : '4.9')}</span>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">{cl.description}</p>
-                                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-100 mt-1 text-[9px] text-[#414755] font-semibold font-mono">
-                                      <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{cl.description}</p>
+                                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 mt-1 text-[9px] text-[#414755] dark:text-slate-400 font-semibold font-mono">
+                                      <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                                       <span className="truncate">{cl.address}</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-[9px] text-[#414755] font-semibold font-mono font-mono">
-                                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                                    <div className="flex items-center gap-1.5 text-[9px] text-[#414755] dark:text-slate-400 font-semibold font-mono">
+                                      <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                       <span>{cl.phone}</span>
                                     </div>
                                   </div>
@@ -1576,12 +1654,12 @@ export default function App() {
                                         <MapPin className="w-4 h-4" />
                                       </div>
                                       <div className="min-w-0">
-                                        <h5 className="font-extrabold text-[11px] truncate leading-snug">{cl.name}</h5>
+                                        <h5 className="font-extrabold text-[11px] text-slate-800 dark:text-slate-100 truncate leading-snug">{cl.name}</h5>
                                         <p className="text-[9px] text-slate-400 truncate font-mono">{cl.address}</p>
                                       </div>
                                     </div>
                                     <div className="text-right shrink-0">
-                                      <span className="block text-[11px] font-extrabold text-[#006b5a] font-sans">
+                                      <span className="block text-[11px] font-extrabold text-[#006b5a] dark:text-emerald-400 font-sans">
                                         {cl.id === 1 ? '1.2 km' : cl.id === 2 ? '3.4 km' : '4.8 km'}
                                       </span>
                                       <span className="block text-[8px] text-slate-400 font-semibold font-mono">
@@ -1594,14 +1672,14 @@ export default function App() {
                             </div>
 
                             {/* Quick emergency hotline */}
-                            <div className="p-3 bg-[#ffdad6]/40 border border-rose-200/50 rounded-2xl flex items-center justify-between gap-3">
+                            <div className="p-3 bg-[#ffdad6]/40 dark:bg-rose-950/20 border border-rose-200/50 dark:border-rose-900/30 rounded-2xl flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 bg-rose-600 text-white rounded-full flex items-center justify-center animate-pulse shrink-0">
                                   <Phone className="w-3.5 h-3.5 fill-white" />
                                 </div>
                                 <div>
-                                  <h5 className="font-bold text-[10px] text-rose-800 font-headline">Trauma Emergency Line</h5>
-                                  <p className="text-[9px] text-rose-500 font-sans">Instant connection to available trauma clinician</p>
+                                  <h5 className="font-bold text-[10px] text-rose-800 dark:text-rose-300 font-headline">Trauma Emergency Line</h5>
+                                  <p className="text-[9px] text-rose-500 dark:text-rose-400 font-sans">Instant connection to available trauma clinician</p>
                                 </div>
                               </div>
                               <a
@@ -1619,25 +1697,25 @@ export default function App() {
                         {homeLayout === 4 && (
                           <div className="space-y-4">
                             {/* Health Tip Section */}
-                            <div className="bg-[#e8f5e9]/60 border border-emerald-200/50 rounded-3xl p-4 space-y-2.5 shadow-3xs select-none">
+                            <div className="bg-[#e8f5e9]/60 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/50 rounded-3xl p-4 space-y-2.5 shadow-3xs select-none">
                               <div className="flex justify-between items-start">
                                 <div className="space-y-0.5">
-                                  <span className="text-[9px] text-[#006b5a] font-extrabold flex items-center gap-1 uppercase tracking-wider font-mono">
-                                    <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-[9px] text-[#006b5a] dark:text-emerald-400 font-extrabold flex items-center gap-1 uppercase tracking-wider font-mono">
+                                    <Shield className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                     {t.healthTip}
                                   </span>
-                                  <h4 className="font-headline font-bold text-xs text-slate-800">
+                                  <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                     {t.tipTitle}
                                   </h4>
                                 </div>
-                                <div className="p-1.5 bg-white text-emerald-600 rounded-xl shadow-3xs font-bold text-xs font-sans">
+                                <div className="p-1.5 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded-xl shadow-3xs font-bold text-xs font-sans">
                                   ★ Daily
                                 </div>
                               </div>
-                              <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
+                              <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
                                 {t.tipText}
                               </p>
-                              <div className="flex gap-2 pt-1 border-t border-emerald-100">
+                              <div className="flex gap-2 pt-1 border-t border-emerald-100 dark:border-emerald-900">
                                 <button
                                   onClick={() => showToast('Advanced instructions downloaded.')}
                                   className="bg-emerald-600 text-white font-bold text-[9px] px-3 py-1 rounded-full active-scale animate-pulse lg:animate-none"
@@ -1646,7 +1724,7 @@ export default function App() {
                                 </button>
                                 <button
                                   onClick={() => showToast('Dismissed daily article banner')}
-                                  className="text-slate-500 border border-slate-300 font-bold text-[9px] px-3 py-1 rounded-full active-scale bg-white"
+                                  className="text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-750 font-bold text-[9px] px-3 py-1 rounded-full active-scale bg-white dark:bg-slate-800"
                                 >
                                   {t.dismiss}
                                 </button>
@@ -1659,7 +1737,7 @@ export default function App() {
                               {offersTable.map((of) => (
                                 <div
                                   key={of.id}
-                                  className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-3xs flex flex-col hover:border-slate-300 transition-colors"
+                                  className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-3xs flex flex-col hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
                                 >
                                   <div className="h-32 relative">
                                     <img src={of.image} alt={of.title} className="w-full h-full object-cover" />
@@ -1668,10 +1746,10 @@ export default function App() {
                                     </span>
                                   </div>
                                   <div className="p-3.5 space-y-1">
-                                    <h4 className="font-headline font-extrabold text-xs text-slate-800 leading-tight">{of.title}</h4>
-                                    <p className="text-[10px] text-slate-500 leading-relaxed font-sans">{of.description}</p>
-                                    <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-100">
-                                      <span className="text-[9px] text-amber-600 font-bold font-sans">Valid till: {of.expiry_date}</span>
+                                    <h4 className="font-headline font-extrabold text-xs text-slate-800 dark:text-slate-100 leading-tight">{of.title}</h4>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">{of.description}</p>
+                                    <div className="flex justify-between items-center pt-2 mt-1 border-t border-slate-100 dark:border-slate-800">
+                                      <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold font-sans">Valid till: {of.expiry_date}</span>
                                       <button
                                         onClick={() => {
                                           setActiveTab('services');
@@ -1688,8 +1766,8 @@ export default function App() {
                             </div>
 
                             {/* Connect Channels Section */}
-                            <div className="bg-slate-50 rounded-3xl p-4 space-y-3 font-sans">
-                              <h4 className="font-headline font-extrabold text-xs text-center text-slate-800">
+                            <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-4 space-y-3 font-sans">
+                              <h4 className="font-headline font-extrabold text-xs text-center text-slate-800 dark:text-slate-100">
                                 Join our Online Smile Community
                               </h4>
                               <p className="text-[10px] text-slate-400 text-center select-none leading-normal">Get instant diagnostic clips and live cosmetic feedback on Erbil channels.</p>
@@ -1699,7 +1777,7 @@ export default function App() {
                                   onClick={(e) => { e.preventDefault(); showToast('Heading to Hala Dent Facebook Feed'); }}
                                   className="flex flex-col items-center gap-1 text-slate-500 hover:text-blue-600"
                                 >
-                                  <div className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
+                                  <div className="w-9 h-9 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-3xs active-scale">
                                     <Globe className="w-4 h-4 text-blue-600 font-mono" />
                                   </div>
                                   <span className="text-[8px] font-bold">Facebook</span>
@@ -1709,7 +1787,7 @@ export default function App() {
                                   onClick={(e) => { e.preventDefault(); showToast('Heading to Hala Dent @hala_dent Instagram'); }}
                                   className="flex flex-col items-center gap-1 text-slate-500 hover:text-pink-600"
                                 >
-                                  <div className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale">
+                                  <div className="w-9 h-9 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-3xs active-scale">
                                     <ImageIcon className="w-4 h-4 text-pink-500" />
                                   </div>
                                   <span className="text-[8px] font-bold">Instagram</span>
@@ -1719,8 +1797,8 @@ export default function App() {
                                   onClick={(e) => { e.preventDefault(); showToast('App link generator copied to clipboard'); }}
                                   className="flex flex-col items-center gap-1 text-slate-500 hover:text-slate-900"
                                 >
-                                  <div className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-3xs active-scale font-mono">
-                                    <Share2 className="w-4 h-4 text-slate-700" />
+                                  <div className="w-9 h-9 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-3xs active-scale font-mono">
+                                    <Share2 className="w-4 h-4 text-slate-700 dark:text-slate-300" />
                                   </div>
                                   <span className="text-[8px] font-bold">Share App</span>
                                 </a>
@@ -1734,85 +1812,85 @@ export default function App() {
                           <div className="space-y-4">
                             {/* Flat Welcome Concierge Header */}
                             <div className="text-center py-2 space-y-1 select-none">
-                              <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-mono font-extrabold uppercase">
+                              <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2.5 py-0.5 rounded-full font-mono font-extrabold uppercase">
                                 Concierge Online
                               </span>
-                              <h3 className="font-headline font-extrabold text-base text-slate-800 italic">Slaw, {currentUser.name}</h3>
-                              <p className="text-[10px] text-slate-400 font-medium font-sans">How can our Erbil medical practitioners support your dental care list today?</p>
+                              <h3 className="font-headline font-extrabold text-base text-slate-800 dark:text-slate-100 italic">Slaw, {currentUser.name}</h3>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium font-sans">How can our Erbil medical practitioners support your dental care list today?</p>
                             </div>
 
                             {/* 4 Quick Launch Quadrants */}
                             <div className="grid grid-cols-2 gap-3 pb-1">
                               <button
                                 onClick={() => { setActiveTab('doctors'); showToast('Loaded doctors list for direct select booking'); }}
-                                className="bg-white p-3.5 rounded-3xl border border-slate-200/70 hover:border-blue-400 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
+                                className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
-                                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center mb-1.5 shrink-0 text-blue-600 font-mono">
+                                <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-1.5 shrink-0 text-blue-600 dark:text-blue-400 font-mono">
                                   <Calendar className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 leading-snug font-sans">Book Appointment</span>
-                                <span className="text-[8px] text-slate-400 font-semibold mt-0.5 font-mono">12 специалистов</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Book Appointment</span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">12 Specialists</span>
                               </button>
 
                               <button
                                 onClick={() => { setActiveTab('more'); showToast('Offline medical histories retrieved safely'); }}
-                                className="bg-white p-3.5 rounded-3xl border border-slate-200/70 hover:border-blue-400 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
+                                className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
-                                <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center mb-1.5 shrink-0 text-emerald-600">
+                                <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center mb-1.5 shrink-0 text-emerald-600 dark:text-emerald-400">
                                   <FileText className="w-4 h-4 font-mono" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 leading-snug font-sans">My Medical Records</span>
-                                <span className="text-[8px] text-slate-400 font-semibold mt-0.5 font-mono">2 Active Rows</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">My Medical Records</span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">2 Active Rows</span>
                               </button>
 
                               <button
                                 onClick={() => { setActiveTab('chat'); }}
-                                className="bg-white p-3.5 rounded-3xl border border-slate-200/70 hover:border-blue-400 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
+                                className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
-                                <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center mb-1.5 shrink-0 text-purple-600">
+                                <div className="w-8 h-8 rounded-full bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center mb-1.5 shrink-0 text-purple-600 dark:text-purple-400">
                                   <MessageCircle className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 leading-snug font-sans">Chat Assistants</span>
-                                <span className="text-[8px] text-slate-400 font-semibold mt-0.5 font-mono">Instant bot</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Chat Assistants</span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">Instant Bot</span>
                               </button>
 
                               <button
                                 onClick={() => { setActiveTab('more'); showToast('Directory inquiry section opened'); }}
-                                className="bg-white p-3.5 rounded-3xl border border-slate-200/70 hover:border-blue-400 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
+                                className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
-                                <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center mb-1.5 shrink-0 text-amber-600">
+                                <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center mb-1.5 shrink-0 text-amber-600 dark:text-amber-400">
                                   <HelpCircle className="w-4 h-4 font-mono" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 leading-snug font-sans">Send Inquiry</span>
-                                <span className="text-[8px] text-slate-400 font-semibold mt-0.5 font-mono">Feedback desk</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Send Inquiry</span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">Feedback Desk</span>
                               </button>
                             </div>
 
                             {/* Recent Registered Appointments Status */}
-                            <div className="bg-white p-3.5 rounded-3xl border border-slate-200/80 shadow-3xs space-y-2.5">
+                            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-3xs space-y-2.5">
                               <div className="flex justify-between items-center select-none animate-fade-in">
-                                <span className="text-[9px] text-[#006b5a] font-extrabold uppercase font-mono">
+                                <span className="text-[9px] text-[#006b5a] dark:text-emerald-400 font-extrabold uppercase font-mono">
                                   Active Appointment Schedule
                                 </span>
-                                <span className="text-[9px] text-slate-400 font-extrabold">{appointmentsTable.length} Booked</span>
+                                <span className="text-[9px] text-slate-400 dark:text-slate-400 font-extrabold">{appointmentsTable.length} Booked</span>
                               </div>
                               <div className="space-y-2 max-h-[160px] overflow-y-auto pr-0.5">
                                 {appointmentsTable.map((ap) => {
                                   const doc = dentistsTable.find(d => d.id === ap.dentist_id);
                                   return (
-                                    <div key={ap.id} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between gap-3 text-xs font-sans">
+                                    <div key={ap.id} className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs font-sans">
                                       <div className="flex items-center gap-2">
-                                        <div className="w-7 h-7 bg-blue-100 text-[#0058bc] rounded-full flex items-center justify-center font-extrabold text-[10px]">
+                                        <div className="w-7 h-7 bg-blue-100 dark:bg-blue-950/40 text-[#0058bc] dark:text-blue-400 rounded-full flex items-center justify-center font-extrabold text-[10px]">
                                           {ap.time.substring(0, 2)}
                                         </div>
                                         <div>
-                                          <h5 className="font-extrabold text-[11px] text-slate-800 font-headline">{doc?.name || 'Dr. Specialist'}</h5>
+                                          <h5 className="font-extrabold text-[11px] text-slate-800 dark:text-slate-200 font-headline">{doc?.name || 'Dr. Specialist'}</h5>
                                           <p className="text-[9px] text-slate-400 font-mono">{ap.date} &bull; {ap.time}</p>
                                         </div>
                                       </div>
                                       <div>
                                         <span className={`px-2 py-0.5 rounded-full text-[8px] uppercase tracking-wider font-mono font-extrabold ${
-                                          ap.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                          ap.status === 'confirmed' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300'
                                         }`}>
                                           {ap.status}
                                         </span>
@@ -1836,22 +1914,22 @@ export default function App() {
                     <div className="flex items-center gap-3 select-none">
                       <button 
                         onClick={() => { setActiveTab('clinics'); showToast('Back to clinics directory'); }} 
-                        className="p-1 text-slate-600 hover:bg-slate-100 rounded-full shrink-0"
+                        className="p-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full shrink-0"
                       >
                         <ArrowLeft className="w-5 h-5" />
                       </button>
                       <div>
-                        <h1 className="font-headline font-extrabold text-lg text-slate-900 leading-none">
+                        <h1 className="font-headline font-extrabold text-lg text-slate-900 dark:text-white leading-none">
                           {lang === 'en' ? 'Our Specialists' : lang === 'ar' ? 'أخصائيو عيادتنا' : 'پزیشکە پسپۆڕەکانمان'}
                         </h1>
-                        <p className="text-[9px] text-slate-400 font-semibold mt-1">
+                        <p className="text-[9px] text-slate-400 dark:text-slate-400 font-semibold mt-1">
                           {lang === 'en' ? 'World-class dental professionals' : 'طاقم علاج عالمي متميز لخدمتكم'}
-                        </p>
+                         </p>
                       </div>
                     </div>
 
                     {/* Rich paragraph description matching Screen 5 subtitle */}
-                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
                       {lang === 'en' 
                         ? 'Meet our team of world-class dental professionals dedicated to your smile and oral health. Every doctor is certified by the regional health ministry with verified active practice licenses.'
                         : 'تعرف على نخبة من الأطباء والاستشاريين الملتزمين برعاية صحة وجمال ابتسامتك بأعلى معايير الدقة والتعقيم.'}
@@ -1859,7 +1937,7 @@ export default function App() {
 
                     {/* Interactive Filter row styled select block */}
                     <div className="space-y-1">
-                      <span className="text-[9px] text-slate-400 uppercase font-black font-mono tracking-wider px-1">Filter Specialty</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-black font-mono tracking-wider px-1">Filter Specialty</span>
                       <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1 select-none">
                         {[
                           { key: '', label: 'All Specialties' },
@@ -1874,10 +1952,10 @@ export default function App() {
                               setActiveDoctorFilter(p.key);
                               showToast(`Displaying ${p.label}`);
                             }}
-                            className={`flex-none font-bold text-[10.5px] px-3.5 py-1.5 rounded-full transition-all active-scale border ${
+                            className={`flex-none font-bold text-[10.5px] px-3.5 py-1.5 rounded-full transition-all active-scale border z-10 ${
                               activeDoctorFilter === p.key 
                                 ? 'bg-blue-600 text-white border-blue-600 shadow-3xs' 
-                                : 'bg-white text-slate-500 border-slate-200/70 hover:bg-slate-50'
+                                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200/70 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                             }`}
                           >
                             {p.label}
@@ -1910,18 +1988,18 @@ export default function App() {
                         return (
                           <div
                             key={doc.id}
-                            className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-3xs flex flex-col gap-3.5 relative hover:border-slate-300 transition-colors"
+                            className="bg-white dark:bg-slate-900 rounded-3xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-3xs flex flex-col gap-3.5 relative hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
                           >
                             <div className="flex items-start gap-3.5">
                               {/* Square / Rounded modern Doctor avatar avatar with verification badge overlay */}
-                              <div className="relative w-18 h-18 rounded-2xl overflow-hidden shrink-0 border border-slate-100 bg-slate-50 shadow-3xs">
+                              <div className="relative w-18 h-18 rounded-2xl overflow-hidden shrink-0 border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 shadow-3xs">
                                 <img
                                   src={doc.image}
                                   alt={doc.name}
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
                                 />
-                                <div className="absolute bottom-1 right-1 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center border border-white text-[8px] font-black">
+                                <div className="absolute bottom-1 right-1 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center border border-white dark:border-slate-900 text-[8px] font-black">
                                   ✓
                                 </div>
                               </div>
@@ -1929,29 +2007,29 @@ export default function App() {
                               {/* Doctor info text */}
                               <div className="flex-1 min-w-0 space-y-1">
                                 <div className="flex items-center justify-between gap-2">
-                                  <h4 className="font-headline font-black text-xs text-slate-900 truncate">
+                                  <h4 className="font-headline font-black text-xs text-slate-900 dark:text-slate-100 truncate">
                                     {doc.name}
                                   </h4>
                                   <button
                                     onClick={() => handleToggleFavoriteDoc(doc.id)}
-                                    className={`p-1 rounded-full border border-slate-100 active-scale ${isFav ? 'bg-rose-50 text-rose-500' : 'text-slate-300 hover:text-rose-500 bg-white'}`}
+                                    className={`p-1 rounded-full border border-slate-100 dark:border-slate-800 active-scale ${isFav ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-500' : 'text-slate-300 dark:text-slate-500 hover:text-rose-500 bg-white dark:bg-slate-800'}`}
                                   >
-                                    <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-slate-300 bg-white'}`} />
+                                    <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-slate-300 dark:text-slate-500'}`} />
                                   </button>
                                 </div>
 
-                                <p className="text-[10.5px] text-[#006b5a] font-extrabold leading-none">
+                                <p className="text-[10.5px] text-[#006b5a] dark:text-emerald-400 font-extrabold leading-none">
                                   {doc.title}
                                 </p>
 
-                                <p className="text-[10px] text-slate-400 font-medium line-clamp-1 leading-normal">
+                                <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium line-clamp-1 leading-normal">
                                   {doc.bio}
                                 </p>
 
                                 {/* Rating block */}
-                                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold font-mono">
+                                <div className="flex items-center gap-1 text-[10px] text-slate-505 dark:text-slate-400 font-semibold font-mono">
                                   <span className="text-amber-500">⭐</span>
-                                  <span className="text-slate-800 font-extrabold">{doc.rating || '4.9'}</span>
+                                  <span className="text-slate-800 dark:text-slate-200 font-extrabold">{doc.rating || '4.9'}</span>
                                   <span className="text-slate-400">({doc.reviews_count || '120'} reviews)</span>
                                 </div>
                               </div>
@@ -1959,24 +2037,24 @@ export default function App() {
 
                             {/* Bullet tags matching Screen 5 credentials */}
                             <div className="flex flex-wrap gap-1.5 pt-0.5">
-                              <span className="bg-slate-100 text-slate-600 font-semibold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
+                              <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
                                 {expYears}
                               </span>
                               {specialBadges.map((badge, bIdx) => (
-                                <span key={bIdx} className="bg-blue-50 text-blue-600 font-bold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
+                                <span key={bIdx} className="bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 font-bold font-mono text-[8px] uppercase tracking-wide px-2.5 py-0.5 rounded-full">
                                   {badge}
                                 </span>
                               ))}
                             </div>
 
                             {/* Dual Side-by-Side buttons row */}
-                            <div className="flex gap-2.5 pt-1.5 border-t border-slate-100">
+                            <div className="flex gap-2.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
                               <button
                                 onClick={() => {
                                   // Fake open Profile Modal sheet details
                                   showToast(`Viewing full credentials profile of ${doc.name}`);
                                 }}
-                                className="flex-1 bg-white border border-[#006b5a] text-[#006b5a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
+                                className="flex-1 bg-white dark:bg-slate-900 border border-[#006b5a] dark:border-[#008b76] text-[#006b5a] dark:text-[#00ab8e] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
                               >
                                 View Profile
                               </button>
@@ -2034,12 +2112,12 @@ export default function App() {
                     </div>
 
                     <div className="flex justify-between items-end mb-1 select-none">
-                      <h4 className="font-headline font-bold text-xs text-slate-800">
+                      <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                         {t.ourServices}
                       </h4>
                       <button
                         onClick={() => setSelectedCategoryFilter(null)}
-                        className="text-blue-600 font-bold text-[10px] hover:underline"
+                        className="text-blue-600 dark:text-blue-400 font-bold text-[10px] hover:underline"
                       >
                         Reset Filter
                       </button>
@@ -2054,18 +2132,24 @@ export default function App() {
                             setSelectedCategoryFilter(cat.id);
                             showToast(`Filtered services category: ${cat.name}`);
                           }}
-                          className={`p-3.5 rounded-2xl border transition-all active-scale cursor-pointer ${selectedCategoryFilter === cat.id ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-white text-slate-800 border-slate-200/70 shadow-xs hover:border-slate-300'}`}
+                          className={`p-3.5 rounded-2xl border transition-all active-scale cursor-pointer ${selectedCategoryFilter === cat.id ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-200/70 dark:border-slate-800/80 shadow-xs hover:border-slate-300 dark:hover:border-slate-700'}`}
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <span className="material-symbols-outlined text-2xl text-blue-600">
-                              {cat.icon}
-                            </span>
-                            <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-full ${selectedCategoryFilter === cat.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                            {cat.id === 1 ? (
+                              <Smile className={`w-6 h-6 shrink-0 ${selectedCategoryFilter === cat.id ? 'text-white' : 'text-blue-600'}`} />
+                            ) : cat.id === 2 ? (
+                              <Layers className={`w-6 h-6 shrink-0 ${selectedCategoryFilter === cat.id ? 'text-white' : 'text-blue-500'}`} />
+                            ) : cat.id === 3 ? (
+                              <PlusCircle className={`w-6 h-6 shrink-0 ${selectedCategoryFilter === cat.id ? 'text-white' : 'text-emerald-500'}`} />
+                            ) : (
+                              <Sparkles className={`w-6 h-6 shrink-0 ${selectedCategoryFilter === cat.id ? 'text-white' : 'text-amber-500'}`} />
+                            )}
+                            <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-full ${selectedCategoryFilter === cat.id ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'}`}>
                               {cat.total_clicks} UI clicks
                             </span>
                           </div>
                           <h4 className="font-bold text-[11px] leading-snug">{cat.name}</h4>
-                          <p className={`text-[9px] line-clamp-2 mt-1 leading-normal ${selectedCategoryFilter === cat.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                          <p className={`text-[9px] line-clamp-2 mt-1 leading-normal ${selectedCategoryFilter === cat.id ? 'text-blue-100' : 'text-slate-400 dark:text-slate-400'}`}>
                             {cat.description}
                           </p>
                         </div>
@@ -2077,24 +2161,24 @@ export default function App() {
                       {filteredServices.map((srv) => (
                         <div
                           key={srv.id}
-                          className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center justify-between gap-3 active-scale cursor-pointer hover:border-slate-300"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200 dark:border-slate-800/80 shadow-xs flex items-center justify-between gap-3 active-scale cursor-pointer hover:border-slate-300 dark:hover:border-slate-700"
                           onClick={() => setSelectedServiceDetail(srv)}
                         >
                           <div className="flex items-center gap-3">
                             <img
                               src={srv.image}
                               alt={srv.name}
-                              className="w-12 h-12 object-cover rounded-xl border border-slate-100 shrink-0"
+                              className="w-12 h-12 object-cover rounded-xl border border-slate-100 dark:border-slate-800 shrink-0"
                             />
                             <div>
-                              <h5 className="font-bold text-xs text-slate-950">{srv.name}</h5>
+                              <h5 className="font-bold text-xs text-slate-950 dark:text-slate-100">{srv.name}</h5>
                               <p className="text-[10px] text-slate-400 line-clamp-1">{srv.description}</p>
                               <div className="flex items-center gap-2 mt-1 select-none">
-                                <span className="bg-emerald-50 text-emerald-700 font-bold text-[9px] px-2 py-0.5 rounded-md">
+                                <span className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 font-bold text-[9px] px-2 py-0.5 rounded-md">
                                   ${srv.price}
                                 </span>
                                 {srv.warranty_months > 0 && (
-                                  <span className="bg-slate-100 text-slate-500 font-mono text-[9px] px-1.5 py-0.5 rounded-md">
+                                  <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono text-[9px] px-1.5 py-0.5 rounded-md">
                                     {srv.warranty_months}m warranty
                                   </span>
                                 )}
@@ -2111,12 +2195,12 @@ export default function App() {
                 {/* 4. VIEW TAB: LIVE CHAT ASSISTANT CHATROOM */}
                 {activeTab === 'chat' && (
                   <div className="animate-fade-in p-4 flex flex-col h-[525px] overflow-hidden">
-                    <div className="flex justify-between items-center bg-blue-50 border border-blue-100 px-3 py-2 rounded-2xl mb-3 shrink-0">
+                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-950/25 border border-blue-200 dark:border-blue-900/30 px-3 py-2 rounded-2xl mb-3 shrink-0">
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span className="text-[11px] font-bold text-blue-800">Support Representative Active</span>
+                        <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Support Representative Active</span>
                       </div>
-                      <span className="text-[9px] text-slate-400">Response time: &lt; 2 minutes</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-400">Response time: &lt; 2 minutes</span>
                     </div>
 
                     {/* Simulated Message stream */}
@@ -2126,7 +2210,7 @@ export default function App() {
                           key={i}
                           className={`flex flex-col max-w-[240px] space-y-1 ${msg.sender === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                         >
-                          <div className={`p-2.5 rounded-2xl text-xs font-medium ${msg.sender === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 border border-slate-200 text-slate-800 rounded-tl-none'}`}>
+                          <div className={`p-2.5 rounded-2xl text-xs font-medium ${msg.sender === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
                             {msg.text}
                           </div>
                           <span className="text-[9px] text-slate-400 px-1">{msg.time}</span>
@@ -2134,7 +2218,7 @@ export default function App() {
                       ))}
                       {isBotTyping && (
                         <div className="flex flex-col max-w-[240px] space-y-1 mr-auto items-start animate-pulse">
-                          <div className="p-2.5 rounded-2xl text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200/60 text-slate-500 rounded-tl-none flex items-center gap-1.5 shadow-sm">
+                          <div className="p-2.5 rounded-2xl text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 text-slate-500 dark:text-slate-300 rounded-tl-none flex items-center gap-1.5 shadow-sm">
                             <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                             <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                             <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
@@ -2148,13 +2232,13 @@ export default function App() {
                     <div className="py-2 flex flex-wrap gap-1.5 shrink-0 select-none">
                       <button
                         onClick={() => handleSendMessage("Do you have active laser teeth whitening discounts available?")}
-                        className="bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold text-[9px] py-1 px-2.5 rounded-full"
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full"
                       >
                         🏷️ Discount Pricing?
                       </button>
                       <button
                         onClick={() => handleSendMessage("How much do orthodontic aligners cost in Erbil?")}
-                        className="bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold text-[9px] py-1 px-2.5 rounded-full"
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full"
                       >
                         🦷 Aligner treatment?
                       </button>
@@ -2168,7 +2252,7 @@ export default function App() {
                         value={chatInquiry}
                         onChange={(e) => setChatInquiry(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                        className="flex-1 px-3.5 py-1.5 bg-white border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs"
+                        className="flex-1 px-3.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs"
                       />
                       <button
                         onClick={() => handleSendMessage()}
@@ -2182,24 +2266,24 @@ export default function App() {
 
                 {/* 5. VIEW TAB: MORE INFO - OFFERS, CONTACTS & AMENITIES */}
                 {activeTab === 'more' && (
-                  <div className="animate-fade-in p-4 space-y-5 font-sans bg-[#f8faf9] min-h-screen">
+                  <div className="animate-fade-in p-4 space-y-5 font-sans bg-[#f8faf9] dark:bg-slate-950 min-h-screen pb-24">
                     
                     {/* Welcome Hero Card styled matching screenshot exactly */}
-                    <div className="bg-white rounded-[24px] p-4.5 border border-slate-100 shadow-3xs flex items-center justify-between gap-4 select-none">
+                    <div className="bg-white dark:bg-slate-900 rounded-[24px] p-4.5 border border-slate-100 dark:border-slate-800 shadow-3xs flex items-center justify-between gap-4 select-none">
                       <div className="flex items-center gap-3.5">
                         {/* Avatar block with verified sign */}
                         <div className="relative shrink-0">
-                          <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-3xs">
+                          <div className="w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center shadow-3xs">
                             <User className="w-8 h-8 text-blue-500" />
                           </div>
-                          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-[#10b981] rounded-full flex items-center justify-center border-2 border-white">
+                          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-[#10b981] rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900">
                             <Check className="w-3 h-3 text-white stroke-[3.5]" />
                           </div>
                         </div>
                         
                         {/* Welcome text */}
                         <div className="min-w-0">
-                          <h3 className="font-headline font-black text-sm text-slate-900 leading-tight">
+                          <h3 className="font-headline font-black text-sm text-slate-900 dark:text-white leading-tight">
                             Welcome to Hala Dent
                           </h3>
                           <p className="text-[10px] text-slate-500 font-semibold leading-normal mt-0.5">
@@ -2240,17 +2324,17 @@ export default function App() {
                           onClick={() => {
                             showToast("Displaying Patient Medical Profile details.");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <User className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <User className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-200">
                                 Patient Profile
                               </h4>
-                              <p className="text-[10px] text-slate-400 font-medium">
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium">
                                 Personal details and medical history
                               </p>
                             </div>
@@ -2264,14 +2348,14 @@ export default function App() {
                             setActiveTab('clinics');
                             showToast("Directing to active bookings");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Calendar className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <Calendar className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-200">
                                 My Appointments
                               </h4>
                               <p className="text-[10px] text-slate-400 font-medium">
@@ -2301,17 +2385,17 @@ export default function App() {
                             setLang(nextLang);
                             showToast(`Language switched to ${nextLang === 'en' ? 'English' : nextLang === 'ar' ? 'العربية' : 'کوردی'}`);
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800/60 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Globe className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <Globe className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Language
                               </h4>
-                              <p className="text-[10px] text-slate-400 font-medium">
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium font-sans">
                                 {lang === 'en' ? 'English' : lang === 'ar' ? 'العربية' : 'کوردی'}
                               </p>
                             </div>
@@ -2321,17 +2405,17 @@ export default function App() {
 
                         {/* Theme Mode Switch */}
                         <div 
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Smile className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <Smile className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Dark Mode Theme
                               </h4>
-                              <p className="text-[10px] text-slate-400 font-medium">
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium font-sans">
                                 {themeMode === 'dark' ? 'Clinical Dark theme active' : 'Clean Light theme active'}
                               </p>
                             </div>
@@ -2360,19 +2444,19 @@ export default function App() {
                           onClick={() => {
                             showToast("Configuring alert preferences");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800/60 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Bell className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <Bell className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Notifications
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                         </div>
 
                         {/* Security */}
@@ -2380,19 +2464,19 @@ export default function App() {
                           onClick={() => {
                             showToast("Accessing device passcode options");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800/60 hover:border-slate-250 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Lock className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-600">
+                              <Lock className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Security & Password
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                         </div>
                       </div>
                     </div>
@@ -2412,19 +2496,19 @@ export default function App() {
                           onClick={() => {
                             showToast("Displaying your favorite doctors & clinics list");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Heart className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-750 flex items-center justify-center text-slate-600">
+                              <Heart className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Favorites
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                         </div>
 
                         {/* Announcements */}
@@ -2432,19 +2516,19 @@ export default function App() {
                           onClick={() => {
                             showToast("No new clinical announcements today");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Megaphone className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-750 flex items-center justify-center text-slate-600">
+                              <Megaphone className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Announcements
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                         </div>
 
                         {/* Dynamic Documents loaded directly from content_types & content_translations */}
@@ -2480,22 +2564,22 @@ export default function App() {
                               onClick={() => {
                                 setActiveDocKey(docType.type_key);
                               }}
-                              className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs hover:bg-slate-50/10 active-scale"
+                              className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs hover:bg-slate-50/10 dark:hover:bg-slate-800/20 active-scale"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-[#0058bc]">
-                                  <DocIcon className="w-5 h-5 text-[#0058bc]" />
+                                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-750 flex items-center justify-center text-[#005bc5]">
+                                  <DocIcon className="w-5 h-5 text-[#005bc5]" />
                                 </div>
                                 <div>
-                                  <h4 className="font-headline font-bold text-xs text-slate-800">
+                                  <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                     {docTitle}
                                   </h4>
-                                  <p className="text-[8px] text-slate-400 font-medium font-mono mt-0.5 uppercase tracking-wide">
+                                  <p className="text-[8px] text-slate-400 dark:text-slate-400 font-medium font-mono mt-0.5 uppercase tracking-wide">
                                     Local DB Sync: {docType.type_key}
                                   </p>
                                 </div>
                               </div>
-                              <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                              <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                             </div>
                           );
                         })}
@@ -2506,19 +2590,19 @@ export default function App() {
                             setActiveTab('clinics');
                             showToast("Check our Gulan and Bakhtiary location lists");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 hover:border-slate-205 dark:hover:border-slate-705 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <MapPin className="w-5 h-5 text-[#0058bc]" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-755 flex items-center justify-center text-slate-600">
+                              <MapPin className="w-5 h-5 text-[#005bc5]" />
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
+                              <h4 className="font-headline font-bold text-xs text-slate-800 dark:text-slate-100">
                                 Clinic Locations
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-500 shrink-0" />
                         </div>
 
                         {/* Emergency Contact - explicitly red-styled as in mockup */}
@@ -2526,19 +2610,19 @@ export default function App() {
                           onClick={() => {
                             showToast("Dialing 24/7 Dental Emergency Hotline: +964 750 445 9000");
                           }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:bg-rose-50/50 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
+                          className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 hover:bg-rose-50/50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-slate-100 flex items-center justify-center">
-                              <span className="text-rose-600 text-[18px] font-black leading-none mt-1">*</span>
+                            <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 flex items-center justify-center">
+                              <span className="text-rose-600 dark:text-rose-450 text-[18px] font-black leading-none mt-1">*</span>
                             </div>
                             <div>
-                              <h4 className="font-headline font-bold text-xs text-rose-600">
+                              <h4 className="font-headline font-bold text-xs text-rose-600 dark:text-rose-450">
                                 Emergency Contact
                               </h4>
                             </div>
                           </div>
-                          <ChevronRightIcon className="w-4 h-4 text-rose-300 shrink-0" />
+                          <ChevronRightIcon className="w-4 h-4 text-rose-300 dark:text-rose-500 shrink-0" />
                         </div>
 
                       </div>
@@ -2556,8 +2640,8 @@ export default function App() {
                     </button>
 
                     {/* Social Media Group "Connect with Us" matching screenshot */}
-                    <div className="bg-slate-50 rounded-[28px] p-5 border border-slate-100 shadow-3xs flex flex-col gap-3.5 select-none">
-                      <h4 className="font-headline font-extrabold text-sm text-[#0058bc]">
+                    <div className="bg-slate-50 dark:bg-slate-900 rounded-[28px] p-5 border border-slate-100 dark:border-slate-800 shadow-3xs flex flex-col gap-3.5 select-none">
+                      <h4 className="font-headline font-extrabold text-sm text-[#0058bc] dark:text-blue-400">
                         Connect with Us
                       </h4>
                       
@@ -2565,7 +2649,7 @@ export default function App() {
                         {[
                           { name: 'FACEBOOK', icon: <Globe className="w-5.5 h-5.5 text-[#0058bc]" /> },
                           { name: 'INSTAGRAM', icon: <Clock className="w-5.5 h-5.5 text-[#0058bc]" /> },
-                          { name: 'X', icon: <X className="w-5.5 h-5.5 text-rose-600" /> },
+                          { name: 'X', icon: <X className="w-5.5 h-5.5 text-rose-600 dark:text-rose-450" /> },
                           { name: 'SHARE', icon: <Share2 className="w-5.5 h-5.5 text-[#0058bc]" /> },
                           { name: 'WHATSAPP', icon: <MessageCircle className="w-5.5 h-5.5 text-emerald-500" /> }
                         ].map((social, sIdx) => (
@@ -2574,10 +2658,10 @@ export default function App() {
                             onClick={() => showToast(`Opening Hala Dent's official ${social.name}`)}
                             className="flex flex-col items-center cursor-pointer group"
                           >
-                            <div className="w-12 h-12 rounded-full bg-white border border-slate-100 shadow-3xs flex items-center justify-center text-[#0058bc] group-hover:bg-blue-50/50 transition-colors active-scale">
+                            <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-3xs flex items-center justify-center text-[#0058bc] dark:text-blue-400 group-hover:bg-blue-50/50 dark:group-hover:bg-blue-950/40 transition-colors active-scale">
                               {social.icon}
                             </div>
-                            <span className="text-[8px] font-black tracking-wide text-slate-500 font-mono text-center mt-2.5">
+                            <span className="text-[8px] font-black tracking-wide text-slate-500 dark:text-slate-400 font-mono text-center mt-2.5">
                               {social.name}
                             </span>
                           </div>
@@ -2592,10 +2676,10 @@ export default function App() {
           </div>
 
               {/* Patient Shell Bottom Navbar */}
-              <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md shadow-[0_-4px_15px_rgba(0,122,255,0.06)] h-16 border-t border-slate-100 flex justify-around items-center px-2 pb-safe select-none z-[49]">
+              <nav className={`fixed bottom-0 left-0 right-0 ${theme.tabBarBg} backdrop-blur-md shadow-[0_-4px_15px_rgba(0,122,255,0.06)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.5)] h-16 border-t ${theme.border} flex justify-around items-center px-2 pb-safe select-none z-[49]`}>
                 <button
                   onClick={() => { setActiveTab('clinics'); setSearchQuery(''); }}
-                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'clinics' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
+                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'clinics' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-[#414755] dark:text-slate-400 hover:text-[#181c1c] dark:hover:text-slate-100'}`}
                 >
                   {activeTab === 'clinics' && (
                     <motion.div
@@ -2604,13 +2688,13 @@ export default function App() {
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
-                  <Home className="w-5 h-5 animate-pulse" />
+                  <Home className="w-5 h-5" />
                   <span className="text-[9px] font-bold mt-0.5">{t.clinicsTab}</span>
                 </button>
 
                 <button
                   onClick={() => { setActiveTab('doctors'); setSearchQuery(''); }}
-                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'doctors' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
+                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'doctors' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-[#414755] dark:text-slate-400 hover:text-[#181c1c] dark:hover:text-slate-100'}`}
                 >
                   {activeTab === 'doctors' && (
                     <motion.div
@@ -2625,7 +2709,7 @@ export default function App() {
 
                 <button
                   onClick={() => { setActiveTab('services'); setSearchQuery(''); }}
-                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'services' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
+                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'services' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-[#414755] dark:text-slate-400 hover:text-[#181c1c] dark:hover:text-slate-100'}`}
                 >
                   {activeTab === 'services' && (
                     <motion.div
@@ -2640,7 +2724,7 @@ export default function App() {
 
                 <button
                   onClick={() => { setActiveTab('chat'); }}
-                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'chat' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
+                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-[#414755] dark:text-slate-400 hover:text-[#181c1c] dark:hover:text-slate-100'}`}
                 >
                   {activeTab === 'chat' && (
                     <motion.div
@@ -2655,7 +2739,7 @@ export default function App() {
 
                 <button
                   onClick={() => { setActiveTab('more'); }}
-                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'more' ? 'text-blue-600 font-bold' : 'text-[#414755] hover:text-[#181c1c]'}`}
+                  className={`relative flex flex-col items-center justify-center pb-1 px-3 py-2 transition-all active-scale z-10 ${activeTab === 'more' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-[#414755] dark:text-slate-400 hover:text-[#181c1c] dark:hover:text-slate-100'}`}
                 >
                   {activeTab === 'more' && (
                     <motion.div
@@ -2683,67 +2767,67 @@ export default function App() {
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                      className="bg-white rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto"
+                      className="bg-white dark:bg-slate-900 rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto border-t dark:border-slate-800"
                     >
                       <div className="flex justify-between items-center select-none">
-                        <h4 className="font-headline font-extrabold text-sm text-slate-800">
+                        <h4 className="font-headline font-extrabold text-sm text-slate-800 dark:text-slate-100">
                           {t.bookAppointment}
                         </h4>
                         <button
                           onClick={() => setSelectedDoctorForBooking(null)}
-                          className="bg-slate-100 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+                          className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-3 bg-blue-50 border border-blue-100/60 p-3 rounded-2xl select-none">
+                      <div className="flex items-center gap-3 bg-blue-50 dark:bg-slate-800 border border-blue-100/60 dark:border-slate-700 p-3 rounded-2xl select-none">
                         <img
                           src={selectedDoctorForBooking.image}
                           alt={selectedDoctorForBooking.name}
-                          className="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-xs"
+                          className="w-12 h-12 rounded-full object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
                         />
                         <div>
-                          <h5 className="font-bold text-xs text-slate-900">{selectedDoctorForBooking.name}</h5>
-                          <p className="text-[10px] text-blue-600 font-bold">{selectedDoctorForBooking.title}</p>
+                          <h5 className="font-bold text-xs text-slate-900 dark:text-white">{selectedDoctorForBooking.name}</h5>
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">{selectedDoctorForBooking.title}</p>
                         </div>
                       </div>
 
                       <form onSubmit={handleBookAppointmentSubmit} className="space-y-3 font-sans">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">Pick Target Date</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Pick Target Date</label>
                           <input
                             type="date"
                             value={bookingForm.date}
                             onChange={(e) => setBookingForm({ ...bookingForm, date: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs"
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">Preferred Time Slot</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Preferred Time Slot</label>
                           <select
                             value={bookingForm.time}
                             onChange={(e) => setBookingForm({ ...bookingForm, time: e.target.value })}
-                            className="w-full px-2 py-2 bg-slate-50 border border-slate-200 focus:ring-1 rounded-xl text-xs"
+                            className="w-full px-2 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:ring-1 rounded-xl text-xs"
                           >
-                            <option value="09:00 AM">09:00 AM (Early Slot)</option>
-                            <option value="10:00 AM">10:00 AM</option>
-                            <option value="11:30 AM">11:30 AM</option>
-                            <option value="01:00 PM">01:00 PM (Afternoon checkup)</option>
-                            <option value="03:30 PM">03:30 PM</option>
-                            <option value="05:00 PM">05:00 PM (Late slot)</option>
+                            <option value="09:00 AM" className="dark:bg-slate-900">09:00 AM (Early Slot)</option>
+                            <option value="10:00 AM" className="dark:bg-slate-900">10:00 AM</option>
+                            <option value="11:30 AM" className="dark:bg-slate-900">11:30 AM</option>
+                            <option value="01:00 PM" className="dark:bg-slate-900">01:00 PM (Afternoon checkup)</option>
+                            <option value="03:30 PM" className="dark:bg-slate-900">03:30 PM</option>
+                            <option value="05:00 PM" className="dark:bg-slate-900">05:00 PM (Late slot)</option>
                           </select>
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500">Special Requests / Symptoms</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Special Requests / Symptoms</label>
                           <textarea
                             placeholder="e.g. Extreme crown sensitivity, clear aligners discussion scan, checkup status..."
                             value={bookingForm.notes}
                             onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
                             rows={2}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:outline-none focus:ring-1 rounded-xl text-xs font-medium"
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-1 rounded-xl text-xs font-medium placeholder-slate-400 dark:placeholder-slate-500"
                           />
                         </div>
 
@@ -2773,15 +2857,15 @@ export default function App() {
                       animate={{ y: 0 }}
                       exit={{ y: "100%" }}
                       transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                      className="bg-white rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto"
+                      className="bg-white dark:bg-slate-900 rounded-t-[32px] w-full max-w-md p-5 space-y-4 max-h-[90%] overflow-y-auto border-t dark:border-slate-800"
                     >
                       <div className="flex justify-between items-center select-none">
-                        <h4 className="font-headline font-extrabold text-sm text-slate-800">
+                        <h4 className="font-headline font-extrabold text-sm text-slate-800 dark:text-slate-100">
                           Service Detail
                         </h4>
                         <button
                           onClick={() => setSelectedServiceDetail(null)}
-                          className="bg-slate-100 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+                          className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -2790,39 +2874,39 @@ export default function App() {
                       <img
                         src={selectedServiceDetail.image}
                         alt={selectedServiceDetail.name}
-                        className="w-full h-32 rounded-2xl object-cover shadow-xs border border-slate-100"
+                        className="w-full h-32 rounded-2xl object-cover shadow-xs border border-slate-100 dark:border-slate-800"
                       />
 
                       <div className="space-y-2">
-                        <h3 className="font-headline font-extrabold text-[#0058bc] text-sm tracking-tight leading-snug">
+                        <h3 className="font-headline font-extrabold text-[#0058bc] dark:text-blue-400 text-sm tracking-tight leading-snug">
                           {selectedServiceDetail.name}
                         </h3>
-                        <p className="text-xs text-slate-600 leading-relaxed leading-normal">
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed leading-normal">
                           {selectedServiceDetail.description}
                         </p>
 
-                        <div className="bg-slate-50 p-3 rounded-xl space-y-1.5 text-xs text-slate-505 select-none font-sans">
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl space-y-1.5 text-xs text-slate-500 dark:text-slate-300 select-none font-sans border dark:border-slate-800">
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400 font-bold">Standard Price:</span>
-                            <span className="text-emerald-700 font-bold">${selectedServiceDetail.price} USD</span>
+                            <span className="text-emerald-700 dark:text-emerald-450 font-bold">${selectedServiceDetail.price} USD</span>
                           </div>
                           {selectedServiceDetail.discount_price && selectedServiceDetail.discount_price > 0 && (
-                            <div className="flex justify-between text-[11px] bg-cyan-100/40 p-1 rounded">
-                              <span className="text-cyan-800 font-bold">Promo Price:</span>
-                              <span className="text-cyan-800 font-bold">${selectedServiceDetail.discount_price} USD</span>
+                            <div className="flex justify-between text-[11px] bg-cyan-100/45 dark:bg-cyan-950/30 p-1 rounded">
+                              <span className="text-cyan-800 dark:text-cyan-400 font-bold">Promo Price:</span>
+                              <span className="text-cyan-800 dark:text-cyan-400 font-bold">${selectedServiceDetail.discount_price} USD</span>
                             </div>
                           )}
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400 font-bold font-sans">Target Audience:</span>
-                            <span className="text-slate-700 font-bold">{selectedServiceDetail.target_audience || 'All patients'}</span>
+                            <span className="text-slate-700 dark:text-slate-200 font-bold">{selectedServiceDetail.target_audience || 'All patients'}</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400 font-bold">Clinical Warranty:</span>
-                            <span className="text-slate-700 font-bold">{selectedServiceDetail.warranty_months > 0 ? `${selectedServiceDetail.warranty_months} Months` : 'N/A'}</span>
+                            <span className="text-slate-700 dark:text-slate-200 font-bold">{selectedServiceDetail.warranty_months > 0 ? `${selectedServiceDetail.warranty_months} Months` : 'N/A'}</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400 font-semibold font-sans">Consultation Required:</span>
-                            <span className="text-slate-700 font-semibold">{selectedServiceDetail.requires_consultation ? 'Yes (Full Radiography)' : 'No (Direct entry allowed)'}</span>
+                            <span className="text-slate-700 dark:text-slate-200 font-semibold">{selectedServiceDetail.requires_consultation ? 'Yes (Full Radiography)' : 'No (Direct entry allowed)'}</span>
                           </div>
                         </div>
                       </div>
@@ -2883,42 +2967,42 @@ export default function App() {
                         animate={{ y: 0 }}
                         exit={{ y: "100%" }}
                         transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                        className="bg-white rounded-t-[32px] w-full max-w-md p-6 space-y-4 max-h-[90%] overflow-y-auto"
+                        className="bg-white dark:bg-slate-900 rounded-t-[32px] w-full max-w-md p-6 space-y-4 max-h-[90%] overflow-y-auto border-t dark:border-slate-800"
                       >
-                        <div className="flex justify-between items-center select-none pb-2 border-b border-slate-100">
+                        <div className="flex justify-between items-center select-none pb-2 border-b border-slate-100 dark:border-slate-800">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-slate-100 flex items-center justify-center text-[#0058bc]">
+                            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-[#0058bc] dark:text-blue-400">
                               <DocIcon className="w-5 h-5" />
                             </div>
-                            <h4 className="font-headline font-extrabold text-sm text-slate-800">
+                            <h4 className="font-headline font-extrabold text-sm text-slate-800 dark:text-slate-100">
                               {docTitle}
                             </h4>
                           </div>
                           <button
                             onClick={() => setActiveDocKey(null)}
-                            className="bg-slate-100 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
+                            className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
 
                         <div className="space-y-4 pb-2">
-                          <div className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-wrap select-text p-1">
+                          <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans whitespace-pre-wrap select-text p-1">
                             {docContent}
                           </div>
 
-                          <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-100 space-y-2 select-none">
+                          <div className="bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-800 space-y-2 select-none">
                             <div className="flex justify-between text-[9px] font-mono text-slate-400">
                               <span>LANGUAGE DECLARED:</span>
-                              <span className="font-bold text-[#0058bc] uppercase">{lang}</span>
+                              <span className="font-bold text-[#0058bc] dark:text-blue-400 uppercase">{lang}</span>
                             </div>
                             <div className="flex justify-between text-[9px] font-mono text-slate-400">
                               <span>DOCUMENT KEY:</span>
-                              <span className="font-bold text-slate-600 uppercase">{docType.type_key}</span>
+                              <span className="font-bold text-slate-600 dark:text-slate-300 uppercase">{docType.type_key}</span>
                             </div>
                             <div className="flex justify-between text-[9px] font-mono text-slate-400">
                               <span>DATABASE ROUTE:</span>
-                              <span className="font-bold text-slate-500 uppercase">content_translations</span>
+                              <span className="font-bold text-slate-500 dark:text-slate-400 uppercase">content_translations</span>
                             </div>
                           </div>
                         </div>
