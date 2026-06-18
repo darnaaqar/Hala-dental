@@ -166,4 +166,23 @@ export interface Media {
   tags?: string;
   alt_text?: string;
   thumbnail_url?: string;
+  created_at?: string;
 }
+
+export interface ContentType {
+  id: number;
+  type_key: string;
+  icon_name?: string;
+  created_at: string;
+}
+
+export interface ContentTranslation {
+  id: number;
+  content_type_id: number;
+  language_code: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+

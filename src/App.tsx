@@ -61,20 +61,18 @@ import {
   SEED_SERVICES,
   SEED_OFFERS,
   SEED_MEDIA,
-  INITIAL_NOTIFICATIONS
+  INITIAL_NOTIFICATIONS,
+  SEED_CONTENT_TYPES,
+  SEED_CONTENT_TRANSLATIONS
 } from './data';
 
-import { Category, SubCategory, Clinic, Dentist, Service, Offer, User as UserType, Favorite, Appointment, Contact, Notification, Media } from './types';
+import { Category, SubCategory, Clinic, Dentist, Service, Offer, User as UserType, Favorite, Appointment, Contact, Notification, Media, ContentType, ContentTranslation } from './types';
 import { supabase } from './lib/supabase';
 
 export default function App() {
-  // Brand Logo selection options (Restore all 5 generated presets)
+  // Brand Logo selection options (Strictly set to Style 1 per User request)
   const logoOptions = [
-    { id: 1, src: '/src/assets/images/hala_dent_logo_1_1781652549570.jpg', name: 'Premium Teal & Swoosh', desc: 'Minimalist clinical tooth with a stylish premium teal & emerald stroke accent.' },
-    { id: 2, src: '/src/assets/images/hala_dent_logo_2_1781652561541.jpg', name: 'Luxurious Monogram H', desc: 'Monogram representation fusing clinical crown lines and the elegant character H.' },
-    { id: 3, src: '/src/assets/images/hala_dent_logo_3_1781652573843.jpg', name: 'Digital Smile Glow', desc: 'Tech-forward glowing contour emphasizing beautiful healthy dental smiles on deep background.' },
-    { id: 4, src: '/src/assets/images/hala_dent_logo_4_1781652586372.jpg', name: 'Organic Nature Care', desc: 'Pristine clinical blue tooth cradled by soft organic green wellness leaves.' },
-    { id: 5, src: '/src/assets/images/hala_dent_logo_5_1781652597362.jpg', name: 'Royal Crown Silver', desc: 'Prestigious premium classic design featuring clinical crown and medical cross layout.' }
+    { id: 1, src: '/src/assets/images/hala_dent_logo_1_1781652549570.jpg', name: 'Premium Teal & Swoosh', desc: 'Minimalist clinical tooth with a stylish premium teal & emerald stroke accent.' }
   ];
 
   const [selectedLogoId, setSelectedLogoId] = useState<number>(1);
@@ -244,6 +242,8 @@ export default function App() {
   const [categoriesTable, setCategoriesTable] = useState<Category[]>(SEED_CATEGORIES);
   const [subCategoriesTable, setSubCategoriesTable] = useState<SubCategory[]>(SEED_SUB_CATEGORIES);
   const [mediaTable, setMediaTable] = useState<Media[]>(SEED_MEDIA);
+  const [contentTypesTable, setContentTypesTable] = useState<ContentType[]>(SEED_CONTENT_TYPES);
+  const [contentTranslationsTable, setContentTranslationsTable] = useState<ContentTranslation[]>(SEED_CONTENT_TRANSLATIONS);
 
   // Live Supabase integration states
   const [supabaseLoading, setSupabaseLoading] = useState<boolean>(false);
@@ -426,6 +426,18 @@ export default function App() {
           setAppointmentsTable(mappedAppointments);
         }
 
+        // 6. Synchronize Content Types (from user's updated database tables)
+        const { data: rawContentTypes, error: ctErr } = await supabase.from('content_types').select('*');
+        if (!ctErr && rawContentTypes && rawContentTypes.length > 0) {
+          setContentTypesTable(rawContentTypes);
+        }
+
+        // 7. Synchronize Content Translations
+        const { data: rawTranslations, error: transErr } = await supabase.from('content_translations').select('*');
+        if (!transErr && rawTranslations && rawTranslations.length > 0) {
+          setContentTranslationsTable(rawTranslations);
+        }
+
         setSupabaseSyncStatus('success');
       } catch (err) {
         console.warn('Supabase query partially unresolved, running on localized offline fallback schemas:', err);
@@ -461,6 +473,7 @@ export default function App() {
   const [activeDoctorFilter, setActiveDoctorFilter] = useState<string>('');
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Dentist | null>(null);
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<Service | null>(null);
+  const [activeDocKey, setActiveDocKey] = useState<string | null>(null);
   const [bookingForm, setBookingForm] = useState({
     date: '2026-06-12',
     time: '10:00 AM',
@@ -2340,62 +2353,7 @@ export default function App() {
                           </label>
                         </div>
 
-                        {/* Interactive App Logo Style Preset Chooser */}
-                        <div className="bg-white rounded-2xl p-3.5 border border-slate-100 space-y-3 shadow-3xs">
-                          <div className="flex justify-between items-center select-none">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                                <span className="text-lg">🎨</span>
-                              </div>
-                              <div>
-                                <h4 className="font-headline font-bold text-xs text-slate-800">
-                                  App Logo & Icon Style
-                                </h4>
-                                <p className="text-[9px] text-[#0058bc] font-bold font-mono">
-                                  Currently: Style {selectedLogoId} - {activeLogo.name}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-[9px] bg-blue-50 text-[#0058bc] px-2 py-0.5 rounded-full font-black font-mono">
-                              5 PRESETS
-                            </span>
-                          </div>
 
-                          <div className="grid grid-cols-5 gap-1.5 select-none pt-1">
-                            {logoOptions.map((logo) => {
-                              const isSelected = logo.id === selectedLogoId;
-                              return (
-                                <button
-                                  key={logo.id}
-                                  onClick={() => {
-                                    setSelectedLogoId(logo.id);
-                                    showToast(`Applied ${logo.name} brand preset!`);
-                                  }}
-                                  className={`p-1 bg-slate-50 border rounded-xl cursor-pointer transition-all active-scale relative ${
-                                    isSelected 
-                                      ? 'border-[#0058bc] bg-blue-50/10 ring-2 ring-[#0058bc]/10' 
-                                      : 'border-slate-100 opacity-60 hover:opacity-100'
-                                  }`}
-                                >
-                                  <img
-                                    src={logo.src}
-                                    alt={logo.name}
-                                    className="w-full aspect-square object-cover rounded-lg border border-slate-200/40"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="text-center mt-1 scale-90">
-                                    <span className={`text-[8px] font-black ${isSelected ? 'text-[#0058bc]' : 'text-slate-400'}`}>
-                                      Style {logo.id}
-                                    </span>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-1">
-                            Choose between alternative custom designs. The selected icon immediately updates headers, splash screens, and brand colors.
-                          </p>
-                        </div>
 
                         {/* Notifications */}
                         <div 
@@ -2489,45 +2447,58 @@ export default function App() {
                           <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
                         </div>
 
-                        {/* Privacy Policy */}
-                        <div 
-                          onClick={() => {
-                            showToast("Viewing medical confidentiality terms");
-                          }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Shield className="w-5 h-5 text-[#0058bc]" />
-                            </div>
-                            <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
-                                Privacy Policy
-                              </h4>
-                            </div>
-                          </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
-                        </div>
+                        {/* Dynamic Documents loaded directly from content_types & content_translations */}
+                        {contentTypesTable.map((docType) => {
+                          // 1. Find corresponding translation for active language
+                          let translation = contentTranslationsTable.find(
+                            (ct) => ct.content_type_id === docType.id && ct.language_code === lang
+                          );
+                          // Fallback to English if active language translations are pending
+                          if (!translation) {
+                            translation = contentTranslationsTable.find(
+                              (ct) => ct.content_type_id === docType.id && ct.language_code === 'en'
+                            );
+                          }
 
-                        {/* About Hala Dent */}
-                        <div 
-                          onClick={() => {
-                            showToast("Hala Dent Client Portal Version 3.4.1");
-                          }}
-                          className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
-                              <Info className="w-5 h-5 text-[#0058bc]" />
+                          // 2. Map Lucide icon dynamically
+                          let DocIcon = Shield;
+                          const keyType = docType.type_key.toLowerCase();
+                          if (keyType.includes('terms') || keyType.includes('service') || docType.icon_name === 'description' || docType.icon_name === 'gavel') {
+                            DocIcon = FileText;
+                          } else if (keyType.includes('help') || keyType.includes('faq') || docType.icon_name === 'help_outline') {
+                            DocIcon = HelpCircle;
+                          } else if (keyType.includes('version') || keyType.includes('about') || docType.icon_name === 'info_outline') {
+                            DocIcon = Info;
+                          }
+
+                          const fallbackTitle = docType.type_key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                          const docTitle = translation ? translation.title : fallbackTitle;
+
+                          return (
+                            <div 
+                              key={docType.id}
+                              onClick={() => {
+                                setActiveDocKey(docType.type_key);
+                              }}
+                              className="bg-white rounded-2xl p-3.5 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer flex items-center justify-between shadow-3xs hover:bg-slate-50/10 active-scale"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-[#0058bc]">
+                                  <DocIcon className="w-5 h-5 text-[#0058bc]" />
+                                </div>
+                                <div>
+                                  <h4 className="font-headline font-bold text-xs text-slate-800">
+                                    {docTitle}
+                                  </h4>
+                                  <p className="text-[8px] text-slate-400 font-medium font-mono mt-0.5 uppercase tracking-wide">
+                                    Local DB Sync: {docType.type_key}
+                                  </p>
+                                </div>
+                              </div>
+                              <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
                             </div>
-                            <div>
-                              <h4 className="font-headline font-bold text-xs text-slate-800">
-                                About Hala Dent
-                              </h4>
-                            </div>
-                          </div>
-                          <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0" />
-                        </div>
+                          );
+                        })}
 
                         {/* Clinic Locations */}
                         <div 
@@ -2869,6 +2840,99 @@ export default function App() {
                     </motion.div>
                   </motion.div>
                 )}
+              </AnimatePresence>
+
+              {/* Dynamic Database Documents Modal Drawer */}
+              <AnimatePresence>
+                {activeDocKey && (() => {
+                  const docType = contentTypesTable.find(d => d.type_key === activeDocKey);
+                  if (!docType) return null;
+                  
+                  let translation = contentTranslationsTable.find(
+                    (ct) => ct.content_type_id === docType.id && ct.language_code === lang
+                  );
+                  if (!translation) {
+                    translation = contentTranslationsTable.find(
+                      (ct) => ct.content_type_id === docType.id && ct.language_code === 'en'
+                    );
+                  }
+                  
+                  let DocIcon = Shield;
+                  const keyType = docType.type_key.toLowerCase();
+                  if (keyType.includes('terms') || keyType.includes('service') || docType.icon_name === 'description' || docType.icon_name === 'gavel') {
+                    DocIcon = FileText;
+                  } else if (keyType.includes('help') || keyType.includes('faq') || docType.icon_name === 'help_outline') {
+                    DocIcon = HelpCircle;
+                  } else if (keyType.includes('version') || keyType.includes('about') || docType.icon_name === 'info_outline') {
+                    DocIcon = Info;
+                  }
+                  
+                  const fallbackTitle = docType.type_key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                  const docTitle = translation ? translation.title : fallbackTitle;
+                  const docContent = translation ? translation.content : 'Document translation pending...';
+
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end justify-center z-[60]"
+                    >
+                      <motion.div
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                        className="bg-white rounded-t-[32px] w-full max-w-md p-6 space-y-4 max-h-[90%] overflow-y-auto"
+                      >
+                        <div className="flex justify-between items-center select-none pb-2 border-b border-slate-100">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-slate-100 flex items-center justify-center text-[#0058bc]">
+                              <DocIcon className="w-5 h-5" />
+                            </div>
+                            <h4 className="font-headline font-extrabold text-sm text-slate-800">
+                              {docTitle}
+                            </h4>
+                          </div>
+                          <button
+                            onClick={() => setActiveDocKey(null)}
+                            className="bg-slate-100 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="space-y-4 pb-2">
+                          <div className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-wrap select-text p-1">
+                            {docContent}
+                          </div>
+
+                          <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-100 space-y-2 select-none">
+                            <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                              <span>LANGUAGE DECLARED:</span>
+                              <span className="font-bold text-[#0058bc] uppercase">{lang}</span>
+                            </div>
+                            <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                              <span>DOCUMENT KEY:</span>
+                              <span className="font-bold text-slate-600 uppercase">{docType.type_key}</span>
+                            </div>
+                            <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                              <span>DATABASE ROUTE:</span>
+                              <span className="font-bold text-slate-500 uppercase">content_translations</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setActiveDocKey(null)}
+                          className="w-full bg-[#0058bc] hover:bg-[#004bb0] text-white py-3.5 text-xs font-bold rounded-2xl active-scale transition-all"
+                        >
+                          {lang === 'en' ? 'Close Document' : lang === 'ar' ? 'إغلاق المستند' : 'داخستنی بەڵگەنامە'}
+                        </button>
+                      </motion.div>
+                    </motion.div>
+                  );
+                })()}
               </AnimatePresence>
             </>
           )}

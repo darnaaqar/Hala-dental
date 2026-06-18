@@ -316,3 +316,102 @@ export const INITIAL_NOTIFICATIONS: Notification[] = [
     type: 'promotion'
   }
 ];
+
+export const SEED_CONTENT_TYPES = [
+  { id: 1, type_key: 'privacy_policy', icon_name: 'Shield' },
+  { id: 2, type_key: 'terms_of_service', icon_name: 'FileText' },
+  { id: 3, type_key: 'help_center', icon_name: 'HelpCircle' },
+  { id: 4, type_key: 'app_version', icon_name: 'Info' }
+];
+
+export const SEED_CONTENT_TRANSLATIONS = [
+  // Privacy Policy
+  {
+    id: 1,
+    content_type_id: 1,
+    language_code: 'en',
+    title: 'Privacy & Security Policy',
+    content: 'At Hala Dent Clinic in Erbil, your patient files, orthodontic 3D visual scans, and treatment histories are securely guarded under HIPAA confidentiality standards. We never disclose records to third parties without express consensus.'
+  },
+  {
+    id: 2,
+    content_type_id: 1,
+    language_code: 'ar',
+    title: 'سياسة الخصوصية والأمان',
+    content: 'في عيادات هلا دنت بأربيل، يتم حفظ ملفاتكم المرضية، وصور الأشعة الفموية ثلاثية الأبعاد، وتاريخكم العلاجي بسرية تامة وتشفير كامل وفقاً لأعلى معايير السرية الطبية. نحن لا نشارك بياناتكم مع أي جهة خارجية.'
+  },
+  {
+    id: 3,
+    content_type_id: 1,
+    language_code: 'ku',
+    title: 'سیاسەتی پاراستنی نهێنی',
+    content: 'لە کلینیکەکانی هالا دێنت لە هەولێر، فایلەکانی نەخۆش، وێنەی سێ ڕەهەندی پووک و ددان، و مێژووی چارەسەرکردن بە تەواوی پارێزراون بەپێی بەرزترین ستانداردەکانی نهێنی پزیشکی. ئێمە زانیارییەکانتان بەهیچ لایەنێک نادەین.'
+  },
+  // Terms of Service
+  {
+    id: 4,
+    content_type_id: 2,
+    language_code: 'en',
+    title: 'Clinical Terms of Service',
+    content: '1. Appointment bookings represent pre-scheduled clinician slots. Please cancel at least 3 hours prior.\n2. The $150 consultation fee is 100% credited toward your dental treatment once initiated.\n3. Custom clear aligner programs require professional evaluation by Dr. Sarah Khalil.'
+  },
+  {
+    id: 5,
+    content_type_id: 2,
+    language_code: 'ar',
+    title: 'شروط الخدمة الطبية',
+    content: '١. حجوزات المواعيد تمثل فترات مخصصة للأطباء. يرجى إلغاء الموعد قبل ٣ ساعات على الأقل في حال عدم الحضور.\n٢. رسوم الاستشارة البالغة ١٥٠ دولاراً تُقيد بالكامل كرصيد مجاني من كلفة أي علاج تبدأه في العيادة.\n٣. برامج تقويم الأسنان الشفاف تتطلب فحصاً رقمياً دقيقاً بإشراف الدكتورة سارة خليل.'
+  },
+  {
+    id: 6,
+    content_type_id: 2,
+    language_code: 'ku',
+    title: 'مەرجەکانی پێشکەشکردنی خزمەتگوزاری',
+    content: '١. بڕینی نۆرە کاتێکی تایبەتە بۆ پزیشک. تکایە لایەنی کەم ٣ کاتژمێر پێشتر نۆرەکەت هەڵبوەشێنەوە پێش نەهاتن.\n٢. کرێی پشکنین کە ١٥٠ دۆلارە بە تەواوی دەبێت بە داشکاندن لەسەر هەر چارەسەرێک کە لە کلینیکەکە دەستی پێ دەکەیت.\n٣. چارەسەری تەلی ددانی ڕوون پێویستی بە پشکنینی دیجیتاڵی ورد هەیە بە سەرپەرشتی د. سارە خەلیل.'
+  },
+  // Help Center
+  {
+    id: 7,
+    content_type_id: 3,
+    language_code: 'en',
+    title: 'Help & FAQ Desk',
+    content: '• Q: Where are you located?\nA: Gulan Main Street and Bakhtyari Distict, Erbil.\n\n• Q: How can I reach emergency help?\nA: You can call our 24/7 Red Emergency Hotline prominently listed at the top of the Home layout anytime.\n\n• Q: How much is professional teeth whitening?\nA: Our laser whitening is discounted to $245 (regularly $350).'
+  },
+  {
+    id: 8,
+    content_type_id: 3,
+    language_code: 'ar',
+    title: 'مركز المساعدة والدعم',
+    content: '• س: أين تقع فروعكم؟\nج: شارع كولان الرئيسي وحي بختياري، أربيل.\n\n• س: كيف يمكنني الاتصال بالطوارئ؟\nج: يمكنك الضغط على شريط الطوارئ الأحمر في أعلى الشاشة الرئيسية للاتصال المباشر على مدار ٢٤ ساعة.\n\n• س: ما هي كلفة تبييض الأسنان بالليزر؟\nج: تبييض الأسنان بالليزر متوفر حالياً بعرض خاص بقيمة ٢٤٥ دولاراً (السعر الأصلي ٣٥٠ دولاراً).'
+  },
+  {
+    id: 9,
+    content_type_id: 3,
+    language_code: 'ku',
+    title: 'سەنتەری یارمەتی و پشتیوانی',
+    content: '• پ: لقی سەرەکیتان لەکوێیە؟\nو: شەقامی گوڵانی سەرەکی و گەڕەکی بەختیاری، هەولێر.\n\n• پ: چۆن پەیوەندی بە فریاگوزاری خێراوە بکەم؟\nو: دەتوانیت لە هەر کاتێکدا بێت کلیک لەسەر هێڵی فریاگوزاری سوور بکەیت لە سەرەوەی لاپەڕەی سەرەکی.\n\n• پ: کای تبييض (سپی کردنەوە)ی ددان بە لێزەر چەندە؟\nو: سپیکردنەوەی لێزەری ئێستا بە ئۆفەری تایبەتە بە ٢٤٥ دۆلار (نرخی ئاسایی ٣٥٠ دۆلارە).'
+  },
+  // App Version Info
+  {
+    id: 10,
+    content_type_id: 4,
+    language_code: 'en',
+    title: 'App Version Information',
+    content: 'Hala Dent Patient Portal v3.5.2 (Erbil Build)\n- Built with high-speed React & Tailwind CSS\n- Dynamic Database Table Integration\n- Server-side Live Gemini AI Receptionist Response Bridge'
+  },
+  {
+    id: 11,
+    content_type_id: 4,
+    language_code: 'ar',
+    title: 'معلومات إصدار التطبيق',
+    content: 'بوابة هلا دنت للمرضى الإصدار ٣.٥.٢ (نسخة أربيل)\n- مبني بأحدث تقنيات رياكت و تيلويند كلاس\n- ربط ديناميكي مباشر ومستقر بقواعد البيانات\n- نظام ردود الذكاء الاصطناعي جيميناي المتطور'
+  },
+  {
+    id: 12,
+    content_type_id: 4,
+    language_code: 'ku',
+    title: 'زانیاری جۆری ئەپڵیکەیشن',
+    content: 'بەرنامەی هالا دێنت ڤێرژنی ٣.٥.٢ (وەرگێڕانی هەولێر)\n- دروستکراو بە تەکنەلۆژیای خێرای React و Tailwind CSS\n- گرێدراوی ڕاستەوخۆ بە داتابەیسی سەرهێڵ\n- پشتگیریکراو بە ژیری دەستکردی جێمینای'
+  }
+];
+
