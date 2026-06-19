@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+// @ts-expect-error - Image asset import
 import logo1 from './assets/images/hala_dent_logo_1_1781652549570.jpg';
 import { motion, AnimatePresence } from 'motion/react';
 import {
