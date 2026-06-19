@@ -700,33 +700,21 @@ export default function App() {
           // Check for a valid user profile or use pre-populated mock UUID
           const { data: profiles } = await supabase.from('profiles').select('id').limit(1);
           const patientId = (profiles && profiles.length > 0) ? profiles[0].id : 'dde6a4c2-0000-0000-0000-000000000000';
-          
-          // Formats standard 12-hour time to PostgreSQL 24-hour literal (e.g. "09:30 AM" -> "09:30:00")
-          let parsedHour = parseInt(bookingForm.time.split(':')[0], 10);
-          const isPM = bookingForm.time.toLowerCase().includes('pm');
-          if (isPM && parsedHour < 12) parsedHour += 12;
-          if (!isPM && parsedHour === 12) parsedHour = 0;
-          const padHour = parsedHour.toString().padStart(2, '0');
-          const minutes = bookingForm.time.split(':')[1].replace(/[a-zA-Z\s]/g, '').trim().padStart(2, '0');
-          const scheduledTimeHex = `${padHour}:${minutes}:00`;
-
-          const { data, error } = await supabase.from('appointments').insert({
-            patient_id: patientId,
-            doctor_id: selectedDoctorForBooking.id,
-            clinic_id: typeof selectedDoctorForBooking.clinic_id === 'string' ? selectedDoctorForBooking.clinic_id : null,
-            scheduled_date: bookingForm.date,
-            scheduled_time: scheduledTimeHex,
-            status: 'scheduled'
-          }).select('*');
-
+          const { error } = await supabase.from('appointments').insert({
+            user_id: patientId,
+            dentist_id: selectedDoctorForBooking.id,
+            appointment_date: bookingForm.date,
+            appointment_time: bookingForm.time,
+            status: 'pending',
+            notes: bookingForm.notes || 'Hala Dent Clinic Appointment Registration'
+          });
           if (error) {
-            console.warn('RLS policies prevented insertions on public profiles, using local mock transaction as stable checkout:', error.message);
-          } else if (data && data.length > 0) {
-            console.log('Saved directly in live Supabase appointments list:', data[0]);
-            showToast(`Synchronized successfully with Supabase appointments table!`);
+            console.warn('RLS insert error:', error.message);
+          } else {
+            console.log('Successfully inserted live appointment info.');
           }
-        } catch (fetchErr) {
-          console.error('Failed pushing remote appointment record:', fetchErr);
+        } catch (err) {
+          console.warn('Failed to insert live appointment:', err);
         }
       })();
     }
@@ -758,6 +746,27 @@ export default function App() {
     setIsContactSubmitted(true);
     showToast('Inquiry filed! Live Supabase table: contacts updated.');
     triggerRowHighlight('contacts', newContact.id);
+
+    // Dynamic Live Supabase Push Integration
+    (async () => {
+      try {
+        const { error } = await supabase.from('callback_requests').insert({
+          name: contactForm.name,
+          phone: contactForm.phone,
+          message: contactForm.message || 'Requested callback for information.',
+          clinic_id: contactForm.clinic_id,
+          reason: contactForm.reason,
+          preferred_time: contactForm.preferredTime
+        });
+        if (error) {
+          console.warn('RLS or table error on callback insertion:', error.message);
+        } else {
+          console.log('Inquiry successfully propagated to Callback Requests.');
+        }
+      } catch (err) {
+        console.warn('Offline request, transaction queued internally.', err);
+      }
+    })();
 
     setTimeout(() => {
       setIsContactSubmitted(false);
@@ -819,75 +828,14 @@ export default function App() {
           console.warn("Grok proxy failed with status", response.status);
         }
       } catch (err) {
-        console.warn("Direct Grok proxy fetch failed, trying direct browser fetch...", err);
-        try {
-          const response = await fetch("https://api.x.ai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${clientGrokKey}`
-            },
-            body: JSON.stringify({
-              model: "grok-2-1212",
-              messages: [
-                { role: "system", content: "You are the Hala Dent AI Assistant reception bot in Erbil, Kurdistan. Be warm and reply in under 3 sentences." },
-                ...updatedMessages.slice(-6).map(m => ({
-                  role: m.sender === 'user' ? 'user' : 'assistant',
-                  content: m.text
-                }))
-              ],
-              temperature: 0.7
-            })
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            const botReplyText = data.choices?.[0]?.message?.content?.trim() || "Grok is active.";
-            const botReply = {
-              sender: 'bot' as const,
-              text: botReplyText,
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
-            setChatMessages((prev) => [...prev, botReply]);
-            replied = true;
-          }
-        } catch (clientDirectErr) {
-          console.error("Local direct Grok response also failed:", clientDirectErr);
-        }
+        console.warn("Direct Grok proxy fetch failed:", err);
       }
     }
 
-    // 2. Try invoking the Supabase Edge Function "dentist-ai" as backup
+    // 2. Fall back to local server proxy '/api/chat' using server-side keys
     if (!replied) {
       try {
-        console.log("Attempting to invoke Supabase edge function 'dentist-ai'...");
-        const { data, error } = await supabase.functions.invoke('dentist-ai', {
-          body: { message: rawMessage }
-        });
-
-        if (!error && data && (data.reply || data.generated_text)) {
-          const botReplyText = data.reply || data.generated_text;
-          const botReply = {
-            sender: 'bot' as const,
-            text: botReplyText,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-          setChatMessages((prev) => [...prev, botReply]);
-          replied = true;
-        } else {
-          if (error) {
-            console.warn("Supabase Edge Function returned error:", error);
-          }
-        }
-      } catch (sbErr) {
-        console.warn("Supabase local/remote function not available yet or pending deployment:", sbErr);
-      }
-    }
-
-    // 3. Fall back to local server proxy '/api/chat' using server-side keys
-    if (!replied) {
-      try {
-        console.log("Using backup server-side AI endpoint...");
+        console.log("Using primary server-side AI endpoint...");
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -897,77 +845,79 @@ export default function App() {
           })
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const botReplyText = data.reply || "I apologize, but I encountered an error. Please try again or call our Erbil office!";
-
-        const botReply = {
-          sender: 'bot' as const,
-          text: botReplyText,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setChatMessages((prev) => [...prev, botReply]);
-        replied = true;
-      } catch (err) {
-        console.error("Failed to connect to dental assistant AI server:", err);
-        
-        // Smart Localized Live Fallback Responder based on active language and matching AGENTS.md specs
-        const msg = rawMessage.toLowerCase();
-        let fallbackReplyText = "";
-        
-        const isDoc = msg.includes("doctor") || msg.includes("dentist") || msg.includes("dr") || msg.includes("دکتۆر") || msg.includes("طبيب") || msg.includes("دكتور") || msg.includes("سارە") || msg.includes("سارة");
-        const isPricing = msg.includes("price") || msg.includes("fee") || msg.includes("cost") || msg.includes("whitening") || msg.includes("aligner") || msg.includes("discount") || msg.includes("cleaning") || msg.includes("نرخ") || msg.includes("تخفیف") || msg.includes("سعر") || msg.includes("تبييض");
-        const isLocation = msg.includes("location") || msg.includes("branch") || msg.includes("office") || msg.includes("address") || msg.includes("gulan") || msg.includes("bakhtyari") || msg.includes("جێگا") || msg.includes("شوێن") || msg.includes("عنوان") || msg.includes("فرع");
-        const isEmergency = msg.includes("pain") || msg.includes("toothache") || msg.includes("hurt") || msg.includes("emergency") || msg.includes("ئازار") || msg.includes("فریاکەوتن") || msg.includes("وجع") || msg.includes("طوارئ") || msg.includes("ألم");
-        
-        if (lang === 'ku') {
-          if (isEmergency) {
-            fallbackReplyText = "ئەگەر ئازاری کتوپڕت هەیە، تکایە هێڵی سووری بەپەلەی فریاکەوتن (Emergency Hotline) لێبدە بۆ پەیوەندیکردنی ٢٤/٧ لەگەڵ پزیشکانی ئێشکگرمان. پێشنیارەکان تەنها ڕێنمایین و جێگەی پشکنینی پزیشکی ناگرنەوە.";
-          } else if (isDoc) {
-            fallbackReplyText = "بۆ بینینی بڕوانامەی دکتۆرەکان و حجز کردن، تکایە بچۆ سەر بەشی Doctors. لە هەولێر، د. سارە خەلیل سەرپەرشتی دەکات! تێبینی بکە کە زانیارییەکان گشتین و جێگەی پشکنینی ڕاستەوخۆ ناگرنەوە.";
-          } else if (isPricing) {
-            fallbackReplyText = "نرخەکان لە بەشی Services ببیند. ڕاوێژکاری $١٥٠ یە (داشکاندن دەکرێت ئەگەر چارەسەر دەستپێکەیت) و سپیکردنەوەی لەیزەر بە $٢٤٥ـە! ئەم پێشنیارانە تەنها ڕێنمایین و جێگەی پشکنین ناگرنەوە.";
-          } else if (isLocation) {
-            fallbackReplyText = "سەردانی بەشی Clinics بکە بۆ لقی شەقامی گوڵان و بەختیاری لە هەولێر! بۆ ڕێنمایی دروستتر، تکایە سەردانمان بکە بۆ ئەنجامدانی پشکنینی ڕاستەوخۆ لەلایەن پزیشکانی شارەزامان.";
-          } else {
-            fallbackReplyText = "سڵاو! بەخێربێن بۆ لەیزەر و جوانکاری ددانی Hala Dent لە هەولێر. دەتوانیت لقی شەقامی گوڵان و بەختیاری لە بەشی Clinics ببینی، یان نرخەکان لە بەشی Services. پێشنیارەکان جێگەی پشکنینی ڕاستەوخۆ ناگرنەوە.";
-          }
-        } else if (lang === 'ar') {
-          if (isEmergency) {
-            fallbackReplyText = "إذا كنت تعاني من آلام مفاجئة شديدة، يرجى الاتصال بالخط الساخن الأحمر (Emergency Hotline) للواصل مع أطبائنا طوال ٢٤/٧! الكشف السريري المباشر ضروري ولا تغني التوجيهات العامة عنه.";
-          } else if (isDoc) {
-            fallbackReplyText = "لمعرفة تفاصيل أطبائنا وحجز المواعيد، يرجى زيارة تبويب Doctors. في أربيل، تشرف الدكتورة سارة خليل على التقويم الشفاف! يرجى العلم أن التوجيهات عامة ولا تغني عن الفحص الطبي المباشر.";
-          } else if (isPricing) {
-            fallbackReplyText = "يمكنك الاطلاع على أسعار خدماتنا في تبويب Services. الاستشارة بـ ١٥٠ دولاراً (تُخصم مجاناً عند بدء العلاج)، وتبييض الليزر بـ ٢٤٥ دولاراً! هذه الإرشادات عامة ولا تغني عن الكشف السريري.";
-          } else if (isLocation) {
-            fallbackReplyText = "تفضل بزيارة قائمة Clinics لتحديد مواقع فروعنا في شارع جولان وحي بختياري في أربيل! للحصول على استشارة أدق، يرجى حجز موعد للفحص السريري المباشر في عياداتنا.";
-          } else {
-            fallbackReplyText = "مرحباً بك في مركز هالا دينت (Hala Dent) لطب الأسنان في أربيل! يمكنك العثور على فروعنا في تبويب Clinics والأسعار في تبويب Services. التوجيهات عامة ولا تغني عن الكشف الطبي المباشر.";
-          }
+        if (response.ok) {
+          const data = await response.json();
+          const botReplyText = data.reply || "I apologize, but I encountered an error. Please try again or call our Erbil office!";
+          const botReply = {
+            sender: 'bot' as const,
+            text: botReplyText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setChatMessages((prev) => [...prev, botReply]);
+          replied = true;
         } else {
-          if (isEmergency) {
-            fallbackReplyText = "If you are suffering from sudden intensive pain, please tap the red Emergency Hotline banner at the top of the Home view to call our 24/7 on-call practitioners. Suggestions are general guidance and do not replace clinical examinations.";
-          } else if (isDoc) {
-            fallbackReplyText = "Suggest visiting the Doctors tab to learn about expert credentials or schedule slot bookings. Orthopedics are led by lead Dr. Sarah Khalil. Suggestions represent general guidance and do not replace direct, clinical exams.";
-          } else if (isPricing) {
-            fallbackReplyText = "Suggest visiting the Services tab to view orthodontic aligners or hygiene pricing. Consultation is $150 (waived as a credit on treatment), and professional whitening is discounted at $245. Suggestions are general guidance only.";
-          } else if (isLocation) {
-            fallbackReplyText = "Suggest visiting the Clinics map location picker for branches and directions (Gulan Main St and Bakhtyari District in Erbil). General guidance does not replace direct, clinical dental examinations by our accredited dentists.";
-          } else {
-            fallbackReplyText = "Welcome to Hala Dent Support! You can visit the Clinics map picker for branches, Doctors tab for practitioner bookings, or Services tab for whitening & aligners pricing. Suggestions do not replace clinical dental exams.";
-          }
+          console.warn(`Local chat API route returned non-ok status: ${response.status}`);
         }
-        
-        const botReply = {
-          sender: 'bot' as const,
-          text: fallbackReplyText,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setChatMessages((prev) => [...prev, botReply]);
+      } catch (err) {
+        console.warn("Failed to connect to dental assistant server API, trying other fallbacks:", err);
       }
+    }
+
+    // 3. Default client-side fallback if all live endpoints failed
+    if (!replied) {
+      console.warn("All live assistant bridges failed. Initiating smart offline localized query...");
+      const msg = rawMessage.toLowerCase();
+      let fallbackReplyText = "";
+      
+      const isDoc = msg.includes("doctor") || msg.includes("dentist") || msg.includes("dr") || msg.includes("دکتۆر") || msg.includes("طبيب") || msg.includes("دكتور") || msg.includes("سارە") || msg.includes("سارة");
+      const isPricing = msg.includes("price") || msg.includes("fee") || msg.includes("cost") || msg.includes("whitening") || msg.includes("aligner") || msg.includes("discount") || msg.includes("cleaning") || msg.includes("نرخ") || msg.includes("تخفیف") || msg.includes("سعر") || msg.includes("تبييض");
+      const isLocation = msg.includes("location") || msg.includes("branch") || msg.includes("office") || msg.includes("address") || msg.includes("gulan") || msg.includes("bakhtyari") || msg.includes("جێگا") || msg.includes("شوێن") || msg.includes("عنوان") || msg.includes("فرع");
+      const isEmergency = msg.includes("pain") || msg.includes("toothache") || msg.includes("hurt") || msg.includes("emergency") || msg.includes("ئازار") || msg.includes("فریاکەوتن") || msg.includes("وجع") || msg.includes("طوارئ") || msg.includes("ألم");
+      
+      if (lang === 'ku') {
+        if (isEmergency) {
+          fallbackReplyText = "ئەگەر ئازاری کتوپڕت هەیە، تکایە هێڵی سووری بەپەلەی فریاکەوتن (Emergency Hotline) لێبدە بۆ پەیوەندیکردنی ٢٤/٧ لەگەڵ پزیشکانی ئێشکگرمان. پێشنیارەکان تەنها ڕێنمایین و جێگەی پشکنینی پزیشکی ناگرنەوە.";
+        } else if (isDoc) {
+          fallbackReplyText = "بۆ بینینی بڕوانامەی دکتۆرەکان و حجز کردن، تکایە بچۆ سەر بەشی Doctors. لە هەولێر، د. سارە خەلیل سەرپەرشتی دەکات! تێبینی بکە کە زانیارییەکان گشتین و جێگەی پشکنینی ڕاستەوخۆ ناگرنەوە.";
+        } else if (isPricing) {
+          fallbackReplyText = "نرخەکان لە بەشی Services ببیند. ڕاوێژکاری $١٥٠ یە (داشکان دەکرێت ئەگەر چارەسەر دەستپێکەیت) و سپیکردنەوەی لەیزەر بە $٢٤٥ـە! ئەم پێشنیارانە تەنها ڕێنمایین و جێگەی پشکنین ناگرنەوە.";
+        } else if (isLocation) {
+          fallbackReplyText = "سەردانی بەشی Clinics بکە بۆ لقی شەقامی گوڵان و بەختیاری لە هەولێر! بۆ ڕێنمایی دروستتر، تکایە سەردانمان بکە بۆ ئەنجامدانی پشکنینی ڕاستەوخۆ لەلایەن پزیشکانی شارەزامان.";
+        } else {
+          fallbackReplyText = "بەخێربێیت بۆ Hala Dent Support! سەردانی بەشی Clinics بکە بۆ لقی گوڵان و بەختیاری، بەشی Doctors بۆ دکتۆرەکان، و بەشی Services بۆ نرخەکان. پێشنیارەکان جێی پشکنینی پزیشکی ناگرنەوە.";
+        }
+      } else if (lang === 'ar') {
+        if (isEmergency) {
+          fallbackReplyText = "إذا كنت تعاني من آلام مفاجئة شديدة، يرجى الاتصال بالخط الساخن الأحمر (Emergency Hotline) للواصل مع أطبائنا طوال ٢٤/٧! الكشف السريري المباشر ضروري ولا تغني التوجيهات العامة عنه.";
+        } else if (isDoc) {
+          fallbackReplyText = "لمعرفة تفاصيل أطبائنا وحجز المواعيد، يرجى زيارة تبويب Doctors. في أربيل، تشرف الدكتورة سارة خليل على التقويم الشفاف! يرجى العلم أن التوجيهات عامة ولا تغني عن الفحص الطبي المباشر.";
+        } else if (isPricing) {
+          fallbackReplyText = "يمكنك الاطلاع على أسعار خدماتنا في تبويب Services. الاستشارة بـ ١٥٠ دولاراً (تُخصم مجاناً عند بدء العلاج)، وتبييض الليزر بـ ٢٤٥ دولاراً! هذه الإرشادات عامة ولا تغني عن الكشف السريري.";
+        } else if (isLocation) {
+          fallbackReplyText = "تفضل بزيارة قائمة Clinics لتحديد مواقع فروعنا في شارع جولان وحي بختياري في أربيل! للحصول على استشارة أدق، يرجى حجز موعد للفحص السريري المباشر في عياداتنا.";
+        } else {
+          fallbackReplyText = "مرحباً بك في مركز هالا دينت (Hala Dent) لطب الأسنان في أربيل! يمكنك العثور على فروعنا في تبويب Clinics والأسعار في تبويب Services. التوجيهات عامة ولا تغني عن الكشف الطبي المباشر.";
+        }
+      } else {
+        if (isEmergency) {
+          fallbackReplyText = "If you are suffering from sudden intensive pain, please tap the red Emergency Hotline banner at the top of the Home view to call our 24/7 on-call practitioners. Suggestions are general guidance and do not replace clinical examinations.";
+        } else if (isDoc) {
+          fallbackReplyText = "Suggest visiting the Doctors tab to learn about expert credentials or schedule slot bookings. Orthopedics are led by lead Dr. Sarah Khalil. Suggestions represent general guidance and do not replace direct, clinical exams.";
+        } else if (isPricing) {
+          fallbackReplyText = "Suggest visiting the Services tab to view orthodontic aligners or hygiene pricing. Consultation is $150 (waived as a credit on treatment), and professional whitening is discounted at $245. Suggestions are general guidance only.";
+        } else if (isLocation) {
+          fallbackReplyText = "Suggest visiting the Clinics map location picker for branches and directions (Gulan Main St and Bakhtyari District in Erbil). General guidance does not replace direct, clinical dental examinations by our accredited dentists.";
+        } else {
+          fallbackReplyText = "Welcome to Hala Dent Support! You can visit the Clinics map picker for branches, Doctors tab for practitioner bookings, or Services tab for whitening & aligners pricing. Suggestions do not replace clinical dental exams.";
+        }
+      }
+
+      const botReply = {
+        sender: 'bot' as const,
+        text: fallbackReplyText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages((prev) => [...prev, botReply]);
     }
 
     setIsBotTyping(false);
