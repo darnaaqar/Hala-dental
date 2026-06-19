@@ -913,7 +913,54 @@ export default function App() {
         replied = true;
       } catch (err) {
         console.error("Failed to connect to dental assistant AI server:", err);
-        const fallbackReplyText = "Zor Spas! I received your inquiry, but my live AI response bridge is verifying connection settings right now. You can check our branch details or call us directly at +964 (0) 750 123 4567 for immediate assistance!";
+        
+        // Smart Localized Live Fallback Responder based on active language and matching AGENTS.md specs
+        const msg = rawMessage.toLowerCase();
+        let fallbackReplyText = "";
+        
+        const isDoc = msg.includes("doctor") || msg.includes("dentist") || msg.includes("dr") || msg.includes("دکتۆر") || msg.includes("طبيب") || msg.includes("دكتور") || msg.includes("سارە") || msg.includes("سارة");
+        const isPricing = msg.includes("price") || msg.includes("fee") || msg.includes("cost") || msg.includes("whitening") || msg.includes("aligner") || msg.includes("discount") || msg.includes("cleaning") || msg.includes("نرخ") || msg.includes("تخفیف") || msg.includes("سعر") || msg.includes("تبييض");
+        const isLocation = msg.includes("location") || msg.includes("branch") || msg.includes("office") || msg.includes("address") || msg.includes("gulan") || msg.includes("bakhtyari") || msg.includes("جێگا") || msg.includes("شوێن") || msg.includes("عنوان") || msg.includes("فرع");
+        const isEmergency = msg.includes("pain") || msg.includes("toothache") || msg.includes("hurt") || msg.includes("emergency") || msg.includes("ئازار") || msg.includes("فریاکەوتن") || msg.includes("وجع") || msg.includes("طوارئ") || msg.includes("ألم");
+        
+        if (lang === 'ku') {
+          if (isEmergency) {
+            fallbackReplyText = "ئەگەر ئازاری کتوپڕت هەیە، تکایە هێڵی سووری بەپەلەی فریاکەوتن (Emergency Hotline) لێبدە بۆ پەیوەندیکردنی ٢٤/٧ لەگەڵ پزیشکانی ئێشکگرمان. پێشنیارەکان تەنها ڕێنمایین و جێگەی پشکنینی پزیشکی ناگرنەوە.";
+          } else if (isDoc) {
+            fallbackReplyText = "بۆ بینینی بڕوانامەی دکتۆرەکان و حجز کردن، تکایە بچۆ سەر بەشی Doctors. لە هەولێر، د. سارە خەلیل سەرپەرشتی دەکات! تێبینی بکە کە زانیارییەکان گشتین و جێگەی پشکنینی ڕاستەوخۆ ناگرنەوە.";
+          } else if (isPricing) {
+            fallbackReplyText = "نرخەکان لە بەشی Services ببیند. ڕاوێژکاری $١٥٠ یە (داشکاندن دەکرێت ئەگەر چارەسەر دەستپێکەیت) و سپیکردنەوەی لەیزەر بە $٢٤٥ـە! ئەم پێشنیارانە تەنها ڕێنمایین و جێگەی پشکنین ناگرنەوە.";
+          } else if (isLocation) {
+            fallbackReplyText = "سەردانی بەشی Clinics بکە بۆ لقی شەقامی گوڵان و بەختیاری لە هەولێر! بۆ ڕێنمایی دروستتر، تکایە سەردانمان بکە بۆ ئەنجامدانی پشکنینی ڕاستەوخۆ لەلایەن پزیشکانی شارەزامان.";
+          } else {
+            fallbackReplyText = "سڵاو! بەخێربێن بۆ لەیزەر و جوانکاری ددانی Hala Dent لە هەولێر. دەتوانیت لقی شەقامی گوڵان و بەختیاری لە بەشی Clinics ببینی، یان نرخەکان لە بەشی Services. پێشنیارەکان جێگەی پشکنینی ڕاستەوخۆ ناگرنەوە.";
+          }
+        } else if (lang === 'ar') {
+          if (isEmergency) {
+            fallbackReplyText = "إذا كنت تعاني من آلام مفاجئة شديدة، يرجى الاتصال بالخط الساخن الأحمر (Emergency Hotline) للواصل مع أطبائنا طوال ٢٤/٧! الكشف السريري المباشر ضروري ولا تغني التوجيهات العامة عنه.";
+          } else if (isDoc) {
+            fallbackReplyText = "لمعرفة تفاصيل أطبائنا وحجز المواعيد، يرجى زيارة تبويب Doctors. في أربيل، تشرف الدكتورة سارة خليل على التقويم الشفاف! يرجى العلم أن التوجيهات عامة ولا تغني عن الفحص الطبي المباشر.";
+          } else if (isPricing) {
+            fallbackReplyText = "يمكنك الاطلاع على أسعار خدماتنا في تبويب Services. الاستشارة بـ ١٥٠ دولاراً (تُخصم مجاناً عند بدء العلاج)، وتبييض الليزر بـ ٢٤٥ دولاراً! هذه الإرشادات عامة ولا تغني عن الكشف السريري.";
+          } else if (isLocation) {
+            fallbackReplyText = "تفضل بزيارة قائمة Clinics لتحديد مواقع فروعنا في شارع جولان وحي بختياري في أربيل! للحصول على استشارة أدق، يرجى حجز موعد للفحص السريري المباشر في عياداتنا.";
+          } else {
+            fallbackReplyText = "مرحباً بك في مركز هالا دينت (Hala Dent) لطب الأسنان في أربيل! يمكنك العثور على فروعنا في تبويب Clinics والأسعار في تبويب Services. التوجيهات عامة ولا تغني عن الكشف الطبي المباشر.";
+          }
+        } else {
+          if (isEmergency) {
+            fallbackReplyText = "If you are suffering from sudden intensive pain, please tap the red Emergency Hotline banner at the top of the Home view to call our 24/7 on-call practitioners. Suggestions are general guidance and do not replace clinical examinations.";
+          } else if (isDoc) {
+            fallbackReplyText = "Suggest visiting the Doctors tab to learn about expert credentials or schedule slot bookings. Orthopedics are led by lead Dr. Sarah Khalil. Suggestions represent general guidance and do not replace direct, clinical exams.";
+          } else if (isPricing) {
+            fallbackReplyText = "Suggest visiting the Services tab to view orthodontic aligners or hygiene pricing. Consultation is $150 (waived as a credit on treatment), and professional whitening is discounted at $245. Suggestions are general guidance only.";
+          } else if (isLocation) {
+            fallbackReplyText = "Suggest visiting the Clinics map location picker for branches and directions (Gulan Main St and Bakhtyari District in Erbil). General guidance does not replace direct, clinical dental examinations by our accredited dentists.";
+          } else {
+            fallbackReplyText = "Welcome to Hala Dent Support! You can visit the Clinics map picker for branches, Doctors tab for practitioner bookings, or Services tab for whitening & aligners pricing. Suggestions do not replace clinical dental exams.";
+          }
+        }
+        
         const botReply = {
           sender: 'bot' as const,
           text: fallbackReplyText,
