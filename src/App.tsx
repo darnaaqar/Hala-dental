@@ -502,6 +502,8 @@ export default function App() {
     { sender: 'bot', text: 'Slaw! Welcome to Hala Dent instant assistant. Ask me anything about our clinics, doctors, or laser whitening discounts.', time: '10:15 AM' }
   ]);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [grokKeyInput, setGrokKeyInput] = useState(() => localStorage.getItem("grok_api_key") || "");
+  const [showGrokSetup, setShowGrokSetup] = useState(() => !localStorage.getItem("grok_api_key"));
 
   // Flash UI banners
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -719,7 +721,7 @@ export default function App() {
             console.warn('RLS policies prevented insertions on public profiles, using local mock transaction as stable checkout:', error.message);
           } else if (data && data.length > 0) {
             console.log('Saved directly in live Supabase appointments list:', data[0]);
-            showToast(`Synchronized successfully with Supabase appointment table!`);
+            showToast(`Synchronized successfully with Supabase appointments table!`);
           }
         } catch (fetchErr) {
           console.error('Failed pushing remote appointment record:', fetchErr);
@@ -785,33 +787,102 @@ export default function App() {
     setIsBotTyping(true);
 
     let replied = false;
+    const clientGrokKey = localStorage.getItem("grok_api_key") || "";
 
-    // 1. Try invoking the Supabase Edge Function "dentist-ai" as requested by user
-    try {
-      console.log("Attempting to invoke Supabase edge function 'dentist-ai'...");
-      const { data, error } = await supabase.functions.invoke('dentist-ai', {
-        body: { message: rawMessage }
-      });
+    // 1. Prioritize grok setup if API key is stored in client storage
+    if (clientGrokKey) {
+      try {
+        console.log("Invoking custom Grok Assistant through client-server proxy...");
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: rawMessage,
+            history: updatedMessages.slice(-10),
+            grokApiKey: clientGrokKey
+          })
+        });
 
-      if (!error && data && (data.reply || data.generated_text)) {
-        const botReplyText = data.reply || data.generated_text;
-        const botReply = {
-          sender: 'bot' as const,
-          text: botReplyText,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setChatMessages((prev) => [...prev, botReply]);
-        replied = true;
-      } else {
-        if (error) {
-          console.warn("Supabase Edge Function returned error:", error);
+        if (response.ok) {
+          const data = await response.json();
+          const botReplyText = data.reply || "Grok: (Received empty response)";
+          const botReply = {
+            sender: 'bot' as const,
+            text: botReplyText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setChatMessages((prev) => [...prev, botReply]);
+          replied = true;
+        } else {
+          console.warn("Grok proxy failed with status", response.status);
+        }
+      } catch (err) {
+        console.warn("Direct Grok proxy fetch failed, trying direct browser fetch...", err);
+        try {
+          const response = await fetch("https://api.x.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${clientGrokKey}`
+            },
+            body: JSON.stringify({
+              model: "grok-2-1212",
+              messages: [
+                { role: "system", content: "You are the Hala Dent AI Assistant reception bot in Erbil, Kurdistan. Be warm and reply in under 3 sentences." },
+                ...updatedMessages.slice(-6).map(m => ({
+                  role: m.sender === 'user' ? 'user' : 'assistant',
+                  content: m.text
+                }))
+              ],
+              temperature: 0.7
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const botReplyText = data.choices?.[0]?.message?.content?.trim() || "Grok is active.";
+            const botReply = {
+              sender: 'bot' as const,
+              text: botReplyText,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            setChatMessages((prev) => [...prev, botReply]);
+            replied = true;
+          }
+        } catch (clientDirectErr) {
+          console.error("Local direct Grok response also failed:", clientDirectErr);
         }
       }
-    } catch (sbErr) {
-      console.warn("Supabase local/remote function not available yet or pending deployment:", sbErr);
     }
 
-    // 2. Fall back to local server proxy '/api/chat' if Supabase function not yet deployed
+    // 2. Try invoking the Supabase Edge Function "dentist-ai" as backup
+    if (!replied) {
+      try {
+        console.log("Attempting to invoke Supabase edge function 'dentist-ai'...");
+        const { data, error } = await supabase.functions.invoke('dentist-ai', {
+          body: { message: rawMessage }
+        });
+
+        if (!error && data && (data.reply || data.generated_text)) {
+          const botReplyText = data.reply || data.generated_text;
+          const botReply = {
+            sender: 'bot' as const,
+            text: botReplyText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setChatMessages((prev) => [...prev, botReply]);
+          replied = true;
+        } else {
+          if (error) {
+            console.warn("Supabase Edge Function returned error:", error);
+          }
+        }
+      } catch (sbErr) {
+        console.warn("Supabase local/remote function not available yet or pending deployment:", sbErr);
+      }
+    }
+
+    // 3. Fall back to local server proxy '/api/chat' using server-side keys
     if (!replied) {
       try {
         console.log("Using backup server-side AI endpoint...");
@@ -852,6 +923,7 @@ export default function App() {
 
     setIsBotTyping(false);
   };
+
 
   // Toggle favorite trigger for doctors
   const handleToggleFavoriteDoc = (docId: number) => {
@@ -2201,6 +2273,55 @@ export default function App() {
                         <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Support Representative Active</span>
                       </div>
                       <span className="text-[9px] text-slate-400 dark:text-slate-400">Response time: &lt; 2 minutes</span>
+                    </div>
+
+                    {/* Grok Setup Configuration panel */}
+                    <div className="mb-3 shrink-0 border border-indigo-250 dark:border-indigo-900/40 rounded-2xl overflow-hidden bg-indigo-50/20 dark:bg-indigo-950/10">
+                      <button
+                        onClick={() => setShowGrokSetup(!showGrokSetup)}
+                        className="w-full flex justify-between items-center px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all select-none focus:outline-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Settings className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="text-[10px] font-bold text-indigo-900 dark:text-indigo-200">Grok (X.AI) Custom Mode</span>
+                        </div>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 font-mono tracking-wide">
+                          {localStorage.getItem("grok_api_key") ? "Grok Enabled" : "Default Mode"}
+                        </span>
+                      </button>
+                      
+                      {showGrokSetup && (
+                        <div className="p-3 border-t border-indigo-100 dark:border-indigo-950/20 bg-indigo-50/10 dark:bg-indigo-950/5 space-y-2">
+                          <p className="text-[9px] text-indigo-700 dark:text-indigo-300">
+                            Provide your custom X.AI Grok API Key. Interactions will securely route through Grok models (grok-2-1212) on our server proxy. Leave blank to default back to Gemini.
+                          </p>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              placeholder="Insert xai-..."
+                              value={grokKeyInput}
+                              onChange={(e) => setGrokKeyInput(e.target.value)}
+                              className="flex-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 text-slate-900 dark:text-white rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button
+                              onClick={() => {
+                                const trimmed = grokKeyInput.trim();
+                                if (trimmed) {
+                                  localStorage.setItem("grok_api_key", trimmed);
+                                  showToast("Custom Grok AI Mode Enabled!");
+                                } else {
+                                  localStorage.removeItem("grok_api_key");
+                                  showToast("Default AI Mode Restored.");
+                                }
+                                setShowGrokSetup(false);
+                              }}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] py-1 px-3 rounded-lg active-scale"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Simulated Message stream */}

@@ -150,7 +150,7 @@ async function startServer() {
   // API Route for chat
   app.post("/api/chat", async (req, res) => {
     try {
-      const { message, history } = req.body;
+      const { message, history, grokApiKey } = req.body;
       if (!message) {
         return res.status(400).json({ error: "Message is required" });
       }
@@ -237,10 +237,7 @@ async function startServer() {
         }
       };
 
-      if (!ai) {
-        console.warn("Gemini is not initialized. Using intelligent offline database matcher.");
-        return res.json({ reply: makeSmartOfflineResponse() });
-      }
+      const targetGrokApiKey = grokApiKey || process.env.GROK_API_KEY || process.env.XAI_API_KEY;
 
       let systemInstruction = `You are the Hala Dent AI Assistant, a friendly, professional, and knowledgeable dental support assistant for "Hala Dent" premium dental clinics located in Erbil, Kurdistan Region of Iraq.
 Hala Dent clinics offer premium orthodontics and clear 3D aligners (under expert Dr. Sarah Khalil), advanced cosmetic laser teeth whitening (under Dr. Sara Hawar), dental implants, and 24/7 urgent emergency toothache relief.
@@ -249,6 +246,88 @@ Answer cleanly, warmly, and helpfully. Keep answers very concise (under 3 senten
 
       if (dbContext) {
         systemInstruction += `\n\n[LIVE CLINIC DATA FROM POSTGRESQL DATABASE]:\n${dbContext}`;
+      }
+
+      if (targetGrokApiKey) {
+        console.log("Invoking X.AI Grok API with provided API key...");
+        
+        // Standard OpenAI-compatible message structure for grok API
+        const messages = [
+          { role: "system", content: systemInstruction }
+        ];
+
+        // Format and append history
+        if (history && history.length > 0) {
+          history.forEach((h: any) => {
+            messages.push({
+              role: h.sender === 'user' ? 'user' : 'assistant',
+              content: h.text
+            });
+          });
+        }
+
+        messages.push({ role: "user", content: message });
+
+        try {
+          const grokResponse = await fetch("https://api.x.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${targetGrokApiKey}`
+            },
+            body: JSON.stringify({
+              model: "grok-2-1212",
+              messages: messages,
+              temperature: 0.7
+            })
+          });
+
+          if (grokResponse.ok) {
+            const grokData = await grokResponse.json();
+            if (grokData && grokData.choices && grokData.choices[0] && grokData.choices[0].message) {
+              const replyText = grokData.choices[0].message.content.trim();
+              return res.json({ reply: replyText, provider: "grok" });
+            }
+          } else {
+            const errorText = await grokResponse.text();
+            console.error("Grok API response failed with status:", grokResponse.status, errorText);
+            
+            // Fallback model trial if model name was unrecognized
+            if (grokResponse.status === 404 || errorText.includes("model") || errorText.includes("not found")) {
+              console.log("Trying fallback model 'grok-beta'...");
+              const fallbackResponse = await fetch("https://api.x.ai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${targetGrokApiKey}`
+                },
+                body: JSON.stringify({
+                  model: "grok-beta",
+                  messages: messages,
+                  temperature: 0.7
+                })
+              });
+              
+              if (fallbackResponse.ok) {
+                const fallbackData = await fallbackResponse.json();
+                if (fallbackData && fallbackData.choices && fallbackData.choices[0] && fallbackData.choices[0].message) {
+                  const replyText = fallbackData.choices[0].message.content.trim();
+                  return res.json({ reply: replyText, provider: "grok" });
+                }
+              } else {
+                console.error("Fallback Grok-beta API response failed too:", await fallbackResponse.text());
+              }
+            }
+            throw new Error(`Grok API Error (Status ${grokResponse.status}): ${errorText}`);
+          }
+        } catch (grokErr: any) {
+          console.error("Grok API query exception, falling back to Gemini:", grokErr);
+        }
+      }
+
+      if (!ai) {
+        console.warn("Gemini is not initialized (no GEMINI_API_KEY). Using intelligent offline database matcher.");
+        return res.json({ reply: makeSmartOfflineResponse() });
       }
 
       // Format previous chat history for clean conversational context
@@ -269,15 +348,15 @@ Answer cleanly, warmly, and helpfully. Keep answers very concise (under 3 senten
         });
 
         const replyText = response.text ? response.text.trim() : "I am here to assist you. What can I help you with regarding your dental care?";
-        return res.json({ reply: replyText });
+        return res.json({ reply: replyText, provider: "gemini" });
       } catch (geminiErr: any) {
         console.warn("Gemini API Error, attempting fast smart database-lookup content retrieval:", geminiErr);
         // Instant intelligent live content responder from database when upstream service is offline/busy!
         return res.json({ reply: makeSmartOfflineResponse() });
       }
     } catch (err: any) {
-      console.error("General API Error:", err);
-      res.json({ reply: "Baxêr bêt! Thank you for choosing Hala Dent Erbil. I am currently running on emergency receptionist mode. Please call us at +964 (0) 750 123 4567 or select the red emergency hotline at the top of the app." });
+      console.error("General API Error in chat handler:", err);
+      res.json({ reply: "Baxêr bêt! Thank you for choosing Hala Dent Erbil. I am currently running on emergency backup mode. Please call us at +964 (0) 750 123 4567 or submit your offline question above." });
     }
   });
 
