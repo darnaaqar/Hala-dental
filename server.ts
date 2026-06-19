@@ -11,7 +11,16 @@ const SUPABASE_URL = "https://dkofobocffyzlpmqrrwo.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrb2ZvYm9jZmZ5emxwbXFycndvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDY0NTIsImV4cCI6MjA5NjQyMjQ1Mn0.JmQWvPhsMjobIAWM1EuRtHOsomBJ8U5FiY20ml8dRSo";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+let cachedDbContext = "";
+let lastFetchedTime = 0;
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache
+
 async function getDatabaseContext() {
+  const now = Date.now();
+  if (cachedDbContext && (now - lastFetchedTime < CACHE_TTL)) {
+    return cachedDbContext;
+  }
+
   let context = "";
   try {
     const [clinicsRes, doctorsRes, servicesRes, announcementsRes, bannersRes, amenitiesRes, testimonialsRes] = await Promise.all([
@@ -119,10 +128,14 @@ async function getDatabaseContext() {
       });
       context += "\n";
     }
+
+    cachedDbContext = context;
+    lastFetchedTime = now;
   } catch (err) {
     console.warn("Failed to retrieve database context in Express server:", err);
+    if (cachedDbContext) return cachedDbContext;
   }
-  return context;
+  return context || cachedDbContext;
 }
 
 async function startServer() {
@@ -377,6 +390,12 @@ Answer cleanly, warmly, and helpfully. Keep answers very concise (under 3 senten
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+    // Pre-warm database cache immediately at startup
+    getDatabaseContext().then(() => {
+      console.log("Supabase database context pre-warmed successfully!");
+    }).catch(err => {
+      console.warn("Error pre-warming database context:", err);
+    });
   });
 }
 
