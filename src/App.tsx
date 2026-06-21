@@ -816,7 +816,8 @@ export default function App() {
 
         if (response.ok) {
           const data = await response.json();
-          const botReplyText = data.reply || "Grok: (Received empty response)";
+          const defaultReply = data.provider === "aionlabs" ? "AionLabs: (Received empty response)" : "Grok: (Received empty response)";
+          const botReplyText = data.reply || defaultReply;
           const botReply = {
             sender: 'bot' as const,
             text: botReplyText,
@@ -2274,7 +2275,7 @@ export default function App() {
                       <span className="text-[9px] text-slate-400 dark:text-slate-400">Response time: &lt; 2 minutes</span>
                     </div>
 
-                    {/* Grok Setup Configuration panel */}
+                    {/* AionLabs / Grok Setup Configuration panel */}
                     <div className="mb-3 shrink-0 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/70 dark:bg-slate-900/40">
                       <button
                         onClick={() => setShowGrokSetup(!showGrokSetup)}
@@ -2282,22 +2283,26 @@ export default function App() {
                       >
                         <div className="flex items-center gap-2">
                           <Settings className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Grok (X.AI) Custom Mode</span>
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Custom AI Mode Setup (AionLabs / Grok)</span>
                         </div>
                         <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono tracking-wide border border-slate-300/40 dark:border-slate-700/50">
-                          {localStorage.getItem("grok_api_key") ? "Grok Enabled" : "Default Mode"}
+                          {(() => {
+                            const key = localStorage.getItem("grok_api_key");
+                            if (!key) return "Default Mode";
+                            return key.startsWith("alv2_") ? "AionLabs Active" : "Grok Active";
+                          })()}
                         </span>
                       </button>
                       
                       {showGrokSetup && (
                         <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/20 space-y-2.5 animate-slide-up">
                           <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal">
-                            Provide your custom X.AI Grok API Key. Interactions will securely route through Grok models (grok-2-1212) on our server proxy. Leave blank to default back to Gemini.
+                            Provide your custom AionLabs.ai API Key (starts with <code className="font-mono text-blue-600 dark:text-blue-400">alv2_</code>) or X.AI Grok API Key. Interactions will securely route through our server proxy to AionLabs (aion-labs/aion-2.5) or Grok models. Leave blank to default back to Gemini.
                           </p>
                           <div className="flex gap-2">
                             <input
                               type="password"
-                              placeholder="Insert xai-..."
+                              placeholder="Insert alv2_... or xai-..."
                               value={grokKeyInput}
                               onChange={(e) => setGrokKeyInput(e.target.value)}
                               className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -2307,7 +2312,11 @@ export default function App() {
                                 const trimmed = grokKeyInput.trim();
                                 if (trimmed) {
                                   localStorage.setItem("grok_api_key", trimmed);
-                                  showToast("Custom Grok AI Mode Enabled!");
+                                  if (trimmed.startsWith("alv2_")) {
+                                    showToast("AionLabs AI Mode Enabled!");
+                                  } else {
+                                    showToast("Custom Grok AI Mode Enabled!");
+                                  }
                                 } else {
                                   localStorage.removeItem("grok_api_key");
                                   showToast("Default AI Mode Restored.");

@@ -250,7 +250,8 @@ async function startServer() {
         }
       };
 
-      const targetGrokApiKey = grokApiKey || process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+      const targetGrokApiKey = (grokApiKey && !grokApiKey.startsWith('alv2_')) ? grokApiKey : (process.env.GROK_API_KEY || process.env.XAI_API_KEY);
+      const targetAionlabsApiKey = req.body.aionlabsApiKey || process.env.AIONLABS_API_KEY || (grokApiKey && grokApiKey.startsWith('alv2_') ? grokApiKey : null) || (process.env.GROK_API_KEY && process.env.GROK_API_KEY.startsWith('alv2_') ? process.env.GROK_API_KEY : null);
 
       let systemInstruction = `You are the Hala Dent AI Assistant, a friendly, professional, and knowledgeable dental support assistant for "Hala Dent" premium dental clinics located in Erbil, Kurdistan Region of Iraq.
 Hala Dent clinics offer premium orthodontics and clear 3D aligners (under expert Dr. Sarah Khalil), advanced cosmetic laser teeth whitening (under Dr. Sara Hawar), dental implants, and 24/7 urgent emergency toothache relief.
@@ -261,6 +262,80 @@ Answer cleanly, warmly, and helpfully. Keep answers very concise (under 3 senten
         systemInstruction += `\n\n[LIVE CLINIC DATA FROM POSTGRESQL DATABASE]:\n${dbContext}`;
       }
 
+      // 1. Try AionLabs AI integration if an AionLabs API key is defined
+      if (targetAionlabsApiKey) {
+        console.log("Invoking AionLabs AI (aion-labs/aion-2.5) with provided API key...");
+        
+        const messages = [
+          { role: "system", content: systemInstruction }
+        ];
+
+        if (history && history.length > 0) {
+          history.forEach((h: any) => {
+            messages.push({
+              role: h.sender === 'user' ? 'user' : 'assistant',
+              content: h.text
+            });
+          });
+        }
+
+        messages.push({ role: "user", content: message });
+
+        try {
+          const aionResponse = await fetch("https://api.aionlabs.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${targetAionlabsApiKey}`
+            },
+            body: JSON.stringify({
+              model: "aion-labs/aion-2.5",
+              messages: messages,
+              temperature: 0.7
+            })
+          });
+
+          if (aionResponse.ok) {
+            const aionData = await aionResponse.json();
+            if (aionData && aionData.choices && aionData.choices[0] && aionData.choices[0].message) {
+              const replyText = aionData.choices[0].message.content.trim();
+              return res.json({ reply: replyText, provider: "aionlabs" });
+            }
+          } else {
+            const errorText = await aionResponse.text();
+            console.error("AionLabs API response failed with status:", aionResponse.status, errorText);
+            
+            // Fallback trial to aion-labs/aion-1.0-mini if aion-2.5 fails or is not available
+            console.log("Trying fallback model 'aion-labs/aion-1.0-mini'...");
+            const secondaryResponse = await fetch("https://api.aionlabs.ai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${targetAionlabsApiKey}`
+              },
+              body: JSON.stringify({
+                model: "aion-labs/aion-1.0-mini",
+                messages: messages,
+                temperature: 0.7
+              })
+            });
+
+            if (secondaryResponse.ok) {
+              const secondaryData = await secondaryResponse.json();
+              if (secondaryData && secondaryData.choices && secondaryData.choices[0] && secondaryData.choices[0].message) {
+                const replyText = secondaryData.choices[0].message.content.trim();
+                return res.json({ reply: replyText, provider: "aionlabs" });
+              }
+            } else {
+              console.error("Secondary fallback AionLabs also failed:", await secondaryResponse.text());
+            }
+          }
+        } catch (aionErr: any) {
+          console.error("AionLabs API fetch exception:", aionErr);
+        }
+      }
+
+      // 2. Fallback to X.AI Grok API
       if (targetGrokApiKey) {
         console.log("Invoking X.AI Grok API with provided API key...");
         
