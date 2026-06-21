@@ -250,16 +250,174 @@ async function startServer() {
         }
       };
 
-      const targetGrokApiKey = (grokApiKey && !grokApiKey.startsWith('alv2_')) ? grokApiKey : (process.env.GROK_API_KEY || process.env.XAI_API_KEY);
+      const targetGrokApiKey = (grokApiKey && !grokApiKey.startsWith('alv2_') && !grokApiKey.startsWith('csk-') && !grokApiKey.startsWith('github_pat_')) ? grokApiKey : (process.env.GROK_API_KEY || process.env.XAI_API_KEY);
       const targetAionlabsApiKey = req.body.aionlabsApiKey || process.env.AIONLABS_API_KEY || (grokApiKey && grokApiKey.startsWith('alv2_') ? grokApiKey : null) || (process.env.GROK_API_KEY && process.env.GROK_API_KEY.startsWith('alv2_') ? process.env.GROK_API_KEY : null);
+      const targetCerebrasApiKey = (grokApiKey && grokApiKey.startsWith('csk-') ? grokApiKey : null) || process.env.CEREBRAS_API_KEY || (process.env.GROK_API_KEY && process.env.GROK_API_KEY.startsWith('csk-') ? process.env.GROK_API_KEY : null);
+      const targetGithubApiKey = (grokApiKey && grokApiKey.startsWith('github_pat_') ? grokApiKey : null) || process.env.GITHUB_API_KEY || (process.env.GROK_API_KEY && process.env.GROK_API_KEY.startsWith('github_pat_') ? process.env.GROK_API_KEY : null);
 
+      const learningText = req.body.learningText;
       let systemInstruction = `You are the Hala Dent AI Assistant, a friendly, professional, and knowledgeable dental support assistant for "Hala Dent" premium dental clinics located in Erbil, Kurdistan Region of Iraq.
 Hala Dent clinics offer premium orthodontics and clear 3D aligners (under expert Dr. Sarah Khalil), advanced cosmetic laser teeth whitening (under Dr. Sara Hawar), dental implants, and 24/7 urgent emergency toothache relief.
 Pricing guidance: consultation is $150 (completely free/credited towards any treatment you start), laser whitening is on a special promotion at $245, and professional cleaning or fillings start at only $80.
 Answer cleanly, warmly, and helpfully. Keep answers very concise (under 3 sentences), and refer users to relevant app sections like the Clinics locators, the Doctors tab, or Services catalog. Always mention Erbil, Kurdistan proudly if relevant.`;
 
+      if (learningText && learningText.trim()) {
+        systemInstruction += `\n\n[USER PROVIDED ADDITIONAL CLINIC KNOWLEDGE & PROCEDURES]:\n${learningText.trim()}`;
+        console.log("Injected custom user custom learning text / knowledge base.");
+      }
+
+      // Also support the case where they paste plain learning text directly in the key input
+      if (grokApiKey && !grokApiKey.startsWith('alv2_') && !grokApiKey.startsWith('csk-') && !grokApiKey.startsWith('github_pat_') && grokApiKey.trim().length > 40 && grokApiKey.includes(" ")) {
+        systemInstruction += `\n\n[USER CUSTOM KNOWLEDGE TEXT]:\n${grokApiKey.trim()}`;
+        console.log("Injected learning text from direct key model input fallback.");
+      }
+
       if (dbContext) {
         systemInstruction += `\n\n[LIVE CLINIC DATA FROM POSTGRESQL DATABASE]:\n${dbContext}`;
+      }
+
+      // 0c. Try GitHub Models API integration if a GitHub PAT is defined
+      if (targetGithubApiKey) {
+        console.log("Invoking GitHub Models with provided API key (github_pat_)...");
+
+        const messages = [
+          { role: "system", content: systemInstruction }
+        ];
+
+        if (history && history.length > 0) {
+          history.forEach((h: any) => {
+            messages.push({
+              role: h.sender === 'user' ? 'user' : 'assistant',
+              content: h.text
+            });
+          });
+        }
+
+        messages.push({ role: "user", content: message });
+
+        const githubModels = [
+          "gpt-4o-mini",
+          "gpt-4o",
+          "meta-llama-3.1-70b-instruct",
+          "meta-llama-3-70b-instruct"
+        ];
+
+        let success = false;
+        let replyText = "";
+
+        for (const ghModel of githubModels) {
+          if (success) break;
+          try {
+            console.log(`Trying GitHub Model: ${ghModel}`);
+            const ghResponse = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${targetGithubApiKey}`
+              },
+              body: JSON.stringify({
+                model: ghModel,
+                messages: messages,
+                max_tokens: 256
+              })
+            });
+
+            if (ghResponse.ok) {
+              const ghData = await ghResponse.json();
+              if (ghData && ghData.choices && ghData.choices[0] && ghData.choices[0].message) {
+                replyText = ghData.choices[0].message.content.trim();
+                success = true;
+                break;
+              }
+            } else {
+              console.error(`GitHub model ${ghModel} failed with status:`, ghResponse.status, await ghResponse.text());
+            }
+          } catch (ghErr) {
+            console.error(`Exception calling GitHub model ${ghModel}:`, ghErr);
+          }
+        }
+
+        if (success) {
+          return res.json({ reply: replyText, provider: "github" });
+        } else {
+          return res.json({
+            reply: "GitHub Models AI: Encountered an issue connecting to models. Please verify your GitHub Personal Access Token credentials and scopes.",
+            provider: "github"
+          });
+        }
+      }
+
+      // 0. Try Cerebras AI integration if a Cerebras API key is defined
+      if (targetCerebrasApiKey) {
+        console.log("Invoking Cerebras AI (gpt-oss-120b) with provided API key...");
+        
+        const messages = [
+          { role: "system", content: systemInstruction }
+        ];
+
+        if (history && history.length > 0) {
+          history.forEach((h: any) => {
+            messages.push({
+              role: h.sender === 'user' ? 'user' : 'assistant',
+              content: h.text
+            });
+          });
+        }
+
+        messages.push({ role: "user", content: message });
+
+        try {
+          const cerebrasResponse = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${targetCerebrasApiKey}`
+            },
+            body: JSON.stringify({
+              model: "gpt-oss-120b",
+              messages: messages,
+              temperature: 0.7
+            })
+          });
+
+          if (cerebrasResponse.ok) {
+            const cerebrasData = await cerebrasResponse.json();
+            if (cerebrasData && cerebrasData.choices && cerebrasData.choices[0] && cerebrasData.choices[0].message) {
+              const replyText = cerebrasData.choices[0].message.content.trim();
+              return res.json({ reply: replyText, provider: "cerebras" });
+            }
+          } else {
+            const errorText = await cerebrasResponse.text();
+            console.error("Cerebras API response failed with status:", cerebrasResponse.status, errorText);
+            
+            // Fallback trial to zai-glm-4.7 if gpt-oss-120b fails
+            console.log("Trying fallback model 'zai-glm-4.7' on Cerebras...");
+            const secondaryResponse = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${targetCerebrasApiKey}`
+              },
+              body: JSON.stringify({
+                model: "zai-glm-4.7",
+                messages: messages,
+                temperature: 0.7
+              })
+            });
+
+            if (secondaryResponse.ok) {
+              const secondaryData = await secondaryResponse.json();
+              if (secondaryData && secondaryData.choices && secondaryData.choices[0] && secondaryData.choices[0].message) {
+                const replyText = secondaryData.choices[0].message.content.trim();
+                return res.json({ reply: replyText, provider: "cerebras" });
+              }
+            } else {
+              console.error("Secondary fallback Cerebras also failed:", await secondaryResponse.text());
+            }
+          }
+        } catch (cerebrasErr: any) {
+          console.error("Cerebras API fetch exception:", cerebrasErr);
+        }
       }
 
       // 1. Try AionLabs AI integration if an AionLabs API key is defined

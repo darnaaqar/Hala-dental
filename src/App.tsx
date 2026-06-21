@@ -242,12 +242,12 @@ export default function App() {
   const [notificationsTable, setNotificationsTable] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
 
   // Read-only tables representing the metadata and directories (Dynamic modifications supported via Inspector)
-  const [clinicsTable, setClinicsTable] = useState<Clinic[]>(SEED_CLINICS);
-  const [dentistsTable, setDentistsTable] = useState<Dentist[]>(SEED_DENTISTS);
-  const [servicesTable, setServicesTable] = useState<Service[]>(SEED_SERVICES);
-  const [offersTable, setOffersTable] = useState<Offer[]>(SEED_OFFERS);
-  const [categoriesTable, setCategoriesTable] = useState<Category[]>(SEED_CATEGORIES);
-  const [subCategoriesTable, setSubCategoriesTable] = useState<SubCategory[]>(SEED_SUB_CATEGORIES);
+  const [rawClinicsTable, setClinicsTable] = useState<Clinic[]>(SEED_CLINICS);
+  const [rawDentistsTable, setDentistsTable] = useState<Dentist[]>(SEED_DENTISTS);
+  const [rawServicesTable, setServicesTable] = useState<Service[]>(SEED_SERVICES);
+  const [rawOffersTable, setOffersTable] = useState<Offer[]>(SEED_OFFERS);
+  const [rawCategoriesTable, setCategoriesTable] = useState<Category[]>(SEED_CATEGORIES);
+  const [rawSubCategoriesTable, setSubCategoriesTable] = useState<SubCategory[]>(SEED_SUB_CATEGORIES);
   const [mediaTable, setMediaTable] = useState<Media[]>(SEED_MEDIA);
   const [contentTypesTable, setContentTypesTable] = useState<ContentType[]>(SEED_CONTENT_TYPES);
   const [contentTranslationsTable, setContentTranslationsTable] = useState<ContentTranslation[]>(SEED_CONTENT_TRANSLATIONS);
@@ -445,6 +445,69 @@ export default function App() {
           setContentTranslationsTable(rawTranslations);
         }
 
+        // 8. Synchronize and Initialize Chat Room & load existing message history from public.chat_rooms and public.chat_messages
+        try {
+          console.log('Querying/creating persistent chat room in Supabase...');
+          // Fetch a valid user profile or use pre-populated mock UUID from profiles
+          const { data: profilesList } = await supabase.from('profiles').select('id, full_name').limit(1);
+          const patientId = (profilesList && profilesList.length > 0) ? profilesList[0].id : 'dde6a4c2-0000-0000-0000-000000000000';
+          setActivePatientId(patientId);
+
+          // Find active chat room for patientId
+          let activeRoomId = '';
+          const { data: rooms, error: roomsErr } = await supabase
+            .from('chat_rooms')
+            .select('id')
+            .eq('patient_id', patientId)
+            .limit(1);
+
+          if (!roomsErr && rooms && rooms.length > 0) {
+            activeRoomId = rooms[0].id;
+            console.log('Found existing active chat room for patient:', activeRoomId);
+          } else {
+            // Let's insert a new active chat room record
+            const { data: newRoom, error: roomError } = await supabase
+              .from('chat_rooms')
+              .insert({
+                patient_id: patientId,
+                subject: 'Hala Dent Clinic AI Support Chat'
+              })
+              .select('id')
+              .single();
+
+            if (!roomError && newRoom) {
+              activeRoomId = newRoom.id;
+              console.log('Created a new persistent chat room record:', activeRoomId);
+            } else {
+              console.warn('Could not insert chat_rooms row (possibly RLS or missing profile mapping), using static fallback room ID:', roomError?.message);
+              activeRoomId = 'c0000000-chat-0000-0000-000000000000';
+            }
+          }
+
+          setChatRoomId(activeRoomId);
+
+          // Load historical messages from public.chat_messages table
+          const { data: dbMessages, error: msgError } = await supabase
+            .from('chat_messages')
+            .select('content, sender_id, created_at')
+            .eq('room_id', activeRoomId)
+            .order('created_at', { ascending: true });
+
+          if (!msgError && dbMessages && dbMessages.length > 0) {
+            console.log(`Loaded ${dbMessages.length} persistent chat messages from chat_messages table!`);
+            const mappedMessages = dbMessages.map((m: any) => ({
+              sender: (m.sender_id === patientId) ? ('user' as const) : ('bot' as const),
+              text: m.content || '',
+              time: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }));
+            setChatMessages(mappedMessages);
+          } else {
+            console.log('No previous message history found in database for room.');
+          }
+        } catch (chatError) {
+          console.warn('Silent graceful fallback for Chat Rooms query:', chatError);
+        }
+
         setSupabaseSyncStatus('success');
       } catch (err) {
         console.warn('Supabase query partially unresolved, running on localized offline fallback schemas:', err);
@@ -505,7 +568,25 @@ export default function App() {
   ]);
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [grokKeyInput, setGrokKeyInput] = useState(() => localStorage.getItem("grok_api_key") || "");
-  const [showGrokSetup, setShowGrokSetup] = useState(() => !localStorage.getItem("grok_api_key"));
+  const [aiLearningText, setAiLearningText] = useState(() => localStorage.getItem("ai_learning_text") || "");
+  const [showGrokSetup, setShowGrokSetup] = useState(false);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
+  const handlePasswordSubmit = () => {
+    if (passwordInput === "12345678") {
+      setShowPasswordPrompt(false);
+      setShowGrokSetup(true);
+      setPasswordInput("");
+      setPasswordError("");
+      showToast("AI Customizer Unlocked!");
+    } else {
+      setPasswordError("Incorrect password. Please try again.");
+    }
+  };
+  const [chatRoomId, setChatRoomId] = useState<string | null>(null);
+  const [activePatientId, setActivePatientId] = useState<string>('dde6a4c2-0000-0000-0000-000000000000');
 
   // Flash UI banners
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -641,6 +722,316 @@ export default function App() {
       return (target as any)[prop] || (translations['en'] as any)[prop] || prop;
     }
   }) as any;
+
+  // Fully-reactive helper functions to translate master data dynamic attributes under RTL flow
+  const getLocalizedClinic = (cl: Clinic): Clinic => {
+    // If we came from database and have localized fields from supabase:
+    if (lang === 'ar' && (cl as any).name_ar) return { 
+      ...cl, 
+      name: (cl as any).name_ar, 
+      description: (cl as any).description_ar || (cl as any).subtitle_ar || cl.description,
+      address: (cl as any).address_ar || cl.address
+    };
+    if (lang === 'ku' && (cl as any).name_ku) return { 
+      ...cl, 
+      name: (cl as any).name_ku, 
+      description: (cl as any).description_ku || (cl as any).subtitle_ku || cl.description,
+      address: (cl as any).address_ku || cl.address
+    };
+    
+    // Seed and fallback clinic records translation
+    const idNum = Number(cl.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return {
+        ...cl,
+        name: 'هلا دنت - فرع شارع كولان الرئيسي',
+        description: 'عيادة أسنان مجهزة بأحدث التقنيات الطبية والتشخيصية والمختبرات التعقيمية المتكاملة في أربيل.',
+        address: 'شارع كولان، بالقرب من دريم سيتي، أربيل'
+      };
+      if (idNum === 2) return {
+        ...cl,
+        name: 'هلا دنت - فرع بختياري المميّز',
+        description: 'عيادة حصرية متخصصة في جراحة الفم وزراعة الأسنان وتصميم الابتسامة التجميلية في حي بختياري السكني الراقي.',
+        address: 'بولفار بختياري الرئيسي، مقابل برج كولان، أربيل'
+      };
+      if (idNum === 3) return {
+        ...cl,
+        name: 'هلا دنت - فرع القرية الإنكليزية للعائلات',
+        description: 'عيادة متخصصة لطب الأسنان العائلي مجهزة بغرف وألعاب مخصصة للأطفال ورعاية متكاملة على مدار الساعة.',
+        address: 'بوابة القرية الانكليزية ٣، أربيل'
+      };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return {
+        ...cl,
+        name: 'هالا دێنت - لقی سەرەکی شەقامی گوڵان',
+        description: 'پێشکەوتووترین دامەزراوەی تەندروستی ددان لە هەولێر، مۆدێرنترین ئامێری دیاریکردنی نەخۆشی، تاقیگەی پێشکەوتوو و پاکژکردنەوەی هەوا.',
+        address: 'شەقامی گوڵان، نزیک دریم ستی، هەولێر'
+      };
+      if (idNum === 2) return {
+        ...cl,
+        name: 'هالا دێنت - لقی بەختیاری پێشکەوتوو',
+        description: 'لقی تایبەت بە نەشتەرگەری ددان و چاندنی ددانی پێشکەوتوو لە گەڕەکی بەختیاری لە شاری هەولێر.',
+        address: 'شەقامی سەرەکی بەختیاری، بەرامبەر تەلاری گوڵان، هەولێر'
+      };
+      if (idNum === 3) return {
+        ...cl,
+        name: 'هالا دێنت - لقی فامیلی ئینگلیش ڤیلج',
+        description: 'کلینیکی تایبەت بە خێزان و منداڵان مۆدێرنترین ژووری یاری منداڵان و چاودێری ٢٤ کاتژمێری فریاگوزاری.',
+        address: 'دەروازەی ٣ی ئینگلیش ڤیلج، هەولێر'
+      };
+    }
+    return cl;
+  };
+
+  const getLocalizedDentist = (d: Dentist): Dentist => {
+    // Database columns check
+    if (lang === 'ar' && ((d as any).display_name_ar || (d as any).specialty_ar || (d as any).bio_ar)) {
+      return {
+        ...d,
+        name: (d as any).display_name_ar || (d as any).name_ar || d.name,
+        title: (d as any).specialty_ar || d.title,
+        bio: (d as any).bio_ar || d.bio
+      };
+    }
+    if (lang === 'ku' && ((d as any).display_name_ku || (d as any).specialty_ku || (d as any).bio_ku)) {
+      return {
+        ...d,
+        name: (d as any).display_name_ku || (d as any).name_ku || d.name,
+        title: (d as any).specialty_ku || d.title,
+        bio: (d as any).bio_ku || d.bio
+      };
+    }
+
+    // Seed and fallback dentist records translation
+    const idNum = Number(d.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return {
+        ...d,
+        name: 'د. سارة خليل',
+        title: 'أخصائية تقويم الأسنان',
+        bio: 'أخصائية تقويم أسنان معتمدة مع أكثر من 12 عاماً من التميز السريري في التقويم الشفاف الموجه بالذكاء الاصطناعي. خريجة جامعة أربيل الطبية وجامعة لندن.'
+      };
+      if (idNum === 2) return {
+        ...d,
+        name: 'د. أحمد عمر',
+        title: 'كبير جراحي الفم والفكين',
+        bio: 'جراح فم وفكين استشاري متخصص في زراعة الأسنان المعقدة والتطعيم العظمي التجميلي باستخدام أحدث تقنيات الليزر بدون ألم.'
+      };
+      if (idNum === 3) return {
+        ...d,
+        name: 'د. هناء رستم',
+        title: 'أخصائية طب أسنان الأطفال',
+        bio: 'طبيبة متخصصة في طب أسنان الأطفال تتميز بأسلوبها اللطيف المهدئ لتبديد خوف وقلق الأطفال وجعل زيارتهم ممتعة تماماً.'
+      };
+      if (idNum === 4) return {
+        ...d,
+        name: 'د. أحمد خالد',
+        title: 'طبيب الأسنان العام الرئيسي',
+        bio: 'طبيب أسنان عام متميز يركز على الرعاية الوقائية العميقة، الحشوات التجميلية، وفحوصات الفم واللوحات السنية بأشعة 3D الرقمية.'
+      };
+      if (idNum === 5) return {
+        ...d,
+        name: 'د. سارة هاوار',
+        title: 'مصممة الابتسامة التجميلية',
+        bio: 'أخصائية تجميل الأسنان وتصميم ابتسامة هوليوود باستخدام الفينير الخزفي الرقيق والأنظمة الحديثة لتبييض الأسنان بالليزر البارد.'
+      };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return {
+        ...d,
+        name: 'د. سارا خەلیل',
+        title: 'پسپۆڕی سەرەکی ڕاستکردنەوەی ددان',
+        bio: 'پزیشکی پسپۆڕی ڕاستکردنەوەی ددان بە زیاتر لە ١٢ ساڵ ئەزموون لە بواری ڕاستکەرەوەی ددانی شەفاف بە تەکنەلۆژیای AI. دەرچووی زانکۆی پزیشکی هەولێر و زانکۆی لەندەن.'
+      };
+      if (idNum === 2) return {
+        ...d,
+        name: 'د. ئەحمەد عومەر',
+        title: 'پسپۆڕی نەشتەرگەری دەم و ددان',
+        bio: 'پزیشکی ڕاوێژکار لە نەشتەرگەری دەم و ددان و چاندنی ددانی تیتانیۆم، بەکارهێنانی لەیزەر لە چارەسەرکردنی بێ ئازار بە تەواوی لێهاتووییەوە.'
+      };
+      if (idNum === 3) return {
+        ...d,
+        name: 'د. هانا ڕۆستەم',
+        title: 'پسپۆڕی ددانی منداڵان',
+        bio: 'پزیشکی لێهاتوو لە بواری ددانی منداڵان بە بەکارهێنانی باشترین شێوازی کات بەسەربردن بۆ ئەوەی پشکنینەکە بێ ترس و دڵەڕاوکێ بێت بۆ منداڵە خۆشەویستەکانتان.'
+      };
+      if (idNum === 4) return {
+        ...d,
+        name: 'د. ئەحمەد خالید',
+        title: 'پزیشکی گشتی ددان',
+        bio: 'پسپۆڕی گشتی ددان کە سەرنجی لەسەر چارەسەری پێشوەختە و پڕکردنەوەی جوانکاری و بەکارهێنانی سکانی سێ ڕەهەندی ددانە.'
+      };
+      if (idNum === 5) return {
+        ...d,
+        name: 'د. سارا هاوار',
+        title: 'جوانکاری زەردەخەنە',
+        bio: 'پزیشکی بنیاتنانەوەی جوانکاری ددان و هۆڵیوود سمایل بە بەکارهێنانی فینێری سیرامیکی و سپیکردنەوەی ددانی خێرا و مۆدێرن.'
+      };
+    }
+    return d;
+  };
+
+  const getLocalizedService = (s: Service): Service => {
+    // Supabase dynamic columns check
+    if (lang === 'ar' && ((s as any).name_ar || (s as any).description_ar)) {
+      return {
+        ...s,
+        name: (s as any).name_ar || s.name,
+        description: (s as any).description_ar || s.description
+      };
+    }
+    if (lang === 'ku' && ((s as any).name_ku || (s as any).description_ku)) {
+      return {
+        ...s,
+        name: (s as any).name_ku || s.name,
+        description: (s as any).description_ku || s.description
+      };
+    }
+
+    // Seed and fallback service records translation
+    const idNum = Number(s.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return {
+        ...s,
+        name: 'تبييض الأسنان بالليزر',
+        description: 'تبييض احترافي آمن وبدون ألم يعتمد على ليزر تجميلي خاص لتنشيط المادة المبيضة وإزالة التصبغات بدقة متناهية ودون الإضرار بمينا الأسنان.'
+      };
+      if (idNum === 2) return {
+        ...s,
+        name: 'التقويم الشفاف (Aligners)',
+        description: 'قوالب تقويم غير مرئية مخصصة بالكامل باستخدام مسح رقمي ثلاثي الأبعاد وتقنيات متطورة لتنظيم وتعديل مظهر واصطفاف أسنانك بشكل مريح.'
+      };
+      if (idNum === 3) return {
+        ...s,
+        name: 'زراعة وتثبيت الأسنان',
+        description: 'الحل الدائم والأمثل لتعويض الأسنان المفقودة باستخدام براغي التيتانيوم الألمانية عالية الجودة وتيجان الزركون التجميلية المتطورة.'
+      };
+      if (idNum === 4) return {
+        ...s,
+        name: 'تنظيف الأسنان وإزالة الجير',
+        description: 'إزالة التراكمات الجيرية والبلاك المتصلب تماماً وتلميع الأسطح السنية لتعود للونها الطبيعي وتحميك من التهابات وقرح اللثة.'
+      };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return {
+        ...s,
+        name: 'Scale & Whitening',
+        description: 'سپیکردنەوەی پێشکەوتووی ددان بە جێڵ و لەیزەری مۆدێرن بێ ئازار و بێ تێکدانی پوک و مینای ددان لە ماوەی کەمتر لە کاتژمێرێکدا.'
+      };
+      if (idNum === 2) return {
+        ...s,
+        name: 'ڕاستکەرەوەی ددانی شەفاف',
+        description: 'بەکارهێنانی ڕاستکەرەوەی پێشکەوتووی ددانی شەفاف بۆ ڕێکخستنی ددانەکانت بە کەمترین ماوە بەبێ تەل و ئاسن.'
+      };
+      if (idNum === 3) return {
+        ...s,
+        name: 'چاندنی ددان',
+        description: 'جێگیرکردنی ددانی هەمیشەیی و پێشکەوتوو شوێنی ددانی لەدەستچوو بە باشترین کەرەستە و بە شێوازێکی پزیشکی هەمیشەیی.'
+      };
+      if (idNum === 4) return {
+        ...s,
+        name: 'پاککردنەوەی ددان لە کلینیک',
+        description: 'پاککردنەوەی ددان و پوک لە کلینیک بە نوێترین کەرەستە بۆ نەهێشتنی بەرد و جیر و ڕێگریکردن لە بۆنی ناخۆشی دەم.'
+      };
+    }
+    return s;
+  };
+
+  const getLocalizedCategory = (cat: Category): Category => {
+    const idNum = Number(cat.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return { ...cat, name: 'طب الأسنان العام', description: 'الفحوصات الروتينية، الحشوات التجميلية، التنظيف وإزالة الترسبات الكلسية.' };
+      if (idNum === 2) return { ...cat, name: 'تقويم الأسنان', description: 'تعديل واصطفاف الأسنان باستخدام التقويم العادي والتقويم الشفاف الخفي.' };
+      if (idNum === 3) return { ...cat, name: 'زراعة الأسنان', description: 'الحلول الدائمة لتعويض الأسنان المفقودة بدقة متطورة وأحدث زرعات التيتانيوم.' };
+      if (idNum === 4) return { ...cat, name: 'تجميل الأسنان', description: 'تحسين مظهر الابتسامة عن طريق الفينير، تبييض الأسنان بالليزر، والترميم اللاصق.' };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return { ...cat, name: 'ددانسازی گشتی', description: 'پشکنینی گشتی، پڕکردنەوەی ددان، شتن و پاککردنەوەی سەرەتایی.' };
+      if (idNum === 2) return { ...cat, name: 'ڕاستکردنەوەی ددان', description: 'ڕاستکردنەوەی ددانی سەرەتایی و شەفاف بە باشترین دیزاینی مۆدێرن.' };
+      if (idNum === 3) return { ...cat, name: 'چاندنی ددان', description: 'چارەسەری هەمیشەیی بۆ ددانە لەدەستچووەکان بە بەرزترین کوالێتی و کەرەستە.' };
+      if (idNum === 4) return { ...cat, name: 'جوانکاری ددان', description: 'دیزاینی زەردەخەنەی هۆڵیوود، فینێری سیرامیکی و سپیکردنەوەی ددان بە لەیزەر.' };
+    }
+    return cat;
+  };
+
+  const getLocalizedSubCategory = (sc: SubCategory): SubCategory => {
+    const idNum = Number(sc.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return { ...sc, name: 'تنظيف احترافي عميق', description: 'تنظيف متقدم لإزالة الترسبات الكلسية وتلميع الأسنان وحماية اللثة من نزيف الدم.' };
+      if (idNum === 2) return { ...sc, name: 'التقويم الشفاف الذكي', description: 'تنظيم واصطفاف الأسنان بشكل مريح وقوالب غير مرئية مخصصة بدقة بالغة.' };
+      if (idNum === 3) return { ...sc, name: 'تبييض الأسنان بالليزر', description: 'أنظمة التبييض وتبييض الأسنان التنشيطي بالليزر الطبي البارد.' };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return { ...sc, name: 'پاککردنەوەی قووڵی ددان', description: 'پاککردنەوەی پێشکەوتوو بۆ نەهێشتنی بەرد و جیر و پاراستنی پوک لە خوێنبەربوون.' };
+      if (idNum === 2) return { ...sc, name: 'ڕاستکەرەوەی شەفافه', description: 'قالبەکانی ڕاستکردنەوەی ددان بە شێوازێکی شەفاف و فەرمی بێ تەل.' };
+      if (idNum === 3) return { ...sc, name: 'مۆدێرنی لەیزەر', description: 'سپی بەهێزی ددان بە جێڵ و تیشکی مۆدێرنی لەیزەر.' };
+    }
+    return sc;
+  };
+
+  const getLocalizedOffer = (o: Offer): Offer => {
+    // DB custom columns check
+    if (lang === 'ar' && ((o as any).title_ar || (o as any).subtitle_ar)) {
+      return {
+        ...o,
+        title: (o as any).title_ar || o.title,
+        description: (o as any).subtitle_ar || (o as any).description_ar || o.description
+      };
+    }
+    if (lang === 'ku' && ((o as any).title_ku || (o as any).subtitle_ku)) {
+      return {
+        ...o,
+        title: (o as any).title_ku || o.title,
+        description: (o as any).subtitle_ku || (o as any).description_ku || o.description
+      };
+    }
+
+    const idNum = Number(o.id);
+    if (lang === 'ar') {
+      if (idNum === 1) return {
+        ...o,
+        title: 'عرض تبييض الأسنان الاحترافي',
+        description: 'تبييض الأسنان الاحترافي بالليزر البارد بسعر ترويجي $245 فقط بدلاً من $350 العادي لفترة محدودة!',
+        discount: 'خصم ٣٠٪'
+      };
+      if (idNum === 2) return {
+        ...o,
+        title: 'استشارة وفحص أسنان مجاني',
+        description: 'رسوم الاستشارة $150 يتم ردها أو احتسابها رصيداً مجانياً لك فور البدء بأي جلسة علاجية لدينا!',
+        discount: 'مجاني بالكامل'
+      };
+      if (idNum === 3) return {
+        ...o,
+        title: 'فحص ثلاثي الأبعاد وتقويم شفاف متميز',
+        description: 'فحص ومسح ثلاثي الأبعاد مجاني تماماً عند المباشرة بجلسات تقويم الأسنان الخفي بإشراف الدكتورة سارة.',
+        discount: 'مسح 3D مجاني'
+      };
+    } else if (lang === 'ku') {
+      if (idNum === 1) return {
+        ...o,
+        title: 'ئۆفەری تایبەتی سپیکردنەوەی ددان',
+        description: 'سپیکردنەوەی ددان بە لەیزەر بە داشکانی تایبەت بە $٢٤٥ لەجیاتی $٣٥٠ تەنها بۆ ئەم مانگە!',
+        discount: '٣٠٪ داشکان'
+      };
+      if (idNum === 2) return {
+        ...o,
+        title: 'پشکنینی پزیشکی بە بێ بەرامبەر',
+        description: 'نرخی پشکنین $١٥٠ یەکە وەک دیاری دەدرێتەوە بە نەخۆش گەر چارەسەری ددان لە لای ئێمە دەستپێبکات.',
+        discount: 'بێ بەرامبەر'
+      };
+      if (idNum === 3) return {
+        ...o,
+        title: 'سکانی سێ ڕەهەندی 3D و چارەسەری ڕاستکەرەوەی شەفاف',
+        description: 'پشکنین و تیشکی سێ ڕەهەندی بەبێ بەرامبەر لە کاتی دەستکردن بە چارەسەری ددان لەلایەن دکتۆرە ساراوە.',
+        discount: 'سکانی بێ بەرامبەر'
+      };
+    }
+    return o;
+  };
+
+  // Shadow/alias the static raw-prefix states with fully localized reactive versions
+  const clinicsTable = rawClinicsTable.map(getLocalizedClinic);
+  const dentistsTable = rawDentistsTable.map(getLocalizedDentist);
+  const servicesTable = rawServicesTable.map(getLocalizedService);
+  const offersTable = rawOffersTable.map(getLocalizedOffer);
+  const categoriesTable = rawCategoriesTable.map(getLocalizedCategory);
+  const subCategoriesTable = rawSubCategoriesTable.map(getLocalizedSubCategory);
 
   // Helper trigger to blink data row in Supabase Live Inspector
   const triggerRowHighlight = (table: string, id: number | string) => {
@@ -797,8 +1188,50 @@ export default function App() {
     setChatInquiry('');
     setIsBotTyping(true);
 
+    // Save user's message to Supabase chat_messages table!
+    if (chatRoomId) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('chat_messages').insert({
+            room_id: chatRoomId,
+            sender_id: activePatientId,
+            content: rawMessage
+          });
+          if (error) {
+            console.warn('Failed to insert user message into Supabase chat_messages:', error.message);
+          } else {
+            console.log('Saved user chat message to Supabase successfully.');
+          }
+        } catch (err) {
+          console.warn('Silent issue writing user message to Supabase:', err);
+        }
+      })();
+    }
+
+    const saveBotReplyToDb = (replyText: string) => {
+      if (chatRoomId) {
+        (async () => {
+          try {
+            const { error } = await supabase.from('chat_messages').insert({
+              room_id: chatRoomId,
+              sender_id: 'dde6a4c2-dde6-dde6-dde6-dde6a4c20002', // dynamic virtual staff sender ID
+              content: replyText
+            });
+            if (error) {
+              console.warn('Failed to insert bot response to Supabase chat_messages:', error.message);
+            } else {
+              console.log('Stored assistant reply inside Supabase table public.chat_messages!');
+            }
+          } catch (err) {
+            console.warn('Silent issue writing bot response to Supabase:', err);
+          }
+        })();
+      }
+    };
+
     let replied = false;
     const clientGrokKey = localStorage.getItem("grok_api_key") || "";
+    const activeLearningText = localStorage.getItem("ai_learning_text") || "";
 
     // 1. Prioritize grok setup if API key is stored in client storage
     if (clientGrokKey) {
@@ -810,13 +1243,23 @@ export default function App() {
           body: JSON.stringify({
             message: rawMessage,
             history: updatedMessages.slice(-10),
-            grokApiKey: clientGrokKey
+            grokApiKey: clientGrokKey,
+            learningText: activeLearningText
           })
         });
 
         if (response.ok) {
           const data = await response.json();
-          const defaultReply = data.provider === "aionlabs" ? "AionLabs: (Received empty response)" : "Grok: (Received empty response)";
+          let defaultReply = "Assistant: (Received empty response)";
+          if (data.provider === "aionlabs") {
+            defaultReply = "AionLabs: (Received empty response)";
+          } else if (data.provider === "cerebras") {
+            defaultReply = "Cerebras: (Received empty response)";
+          } else if (data.provider === "github") {
+            defaultReply = "GitHub Models: (Received empty response)";
+          } else if (data.provider === "grok") {
+            defaultReply = "Grok: (Received empty response)";
+          }
           const botReplyText = data.reply || defaultReply;
           const botReply = {
             sender: 'bot' as const,
@@ -825,6 +1268,7 @@ export default function App() {
           };
           setChatMessages((prev) => [...prev, botReply]);
           replied = true;
+          saveBotReplyToDb(botReplyText);
         } else {
           console.warn("Grok proxy failed with status", response.status);
         }
@@ -842,7 +1286,8 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: rawMessage,
-            history: updatedMessages.slice(-10)
+            history: updatedMessages.slice(-10),
+            learningText: activeLearningText
           })
         });
 
@@ -856,6 +1301,7 @@ export default function App() {
           };
           setChatMessages((prev) => [...prev, botReply]);
           replied = true;
+          saveBotReplyToDb(botReplyText);
         } else {
           console.warn(`Local chat API route returned non-ok status: ${response.status}`);
         }
@@ -883,7 +1329,7 @@ export default function App() {
         } else if (isPricing) {
           fallbackReplyText = "نرخەکان لە بەشی Services ببیند. ڕاوێژکاری $١٥٠ یە (داشکان دەکرێت ئەگەر چارەسەر دەستپێکەیت) و سپیکردنەوەی لەیزەر بە $٢٤٥ـە! ئەم پێشنیارانە تەنها ڕێنمایین و جێگەی پشکنین ناگرنەوە.";
         } else if (isLocation) {
-          fallbackReplyText = "سەردانی بەشی Clinics بکە بۆ لقی شەقامی گوڵان و بەختیاری لە هەولێر! بۆ ڕێنمایی دروستتر، تکایە سەردانمان بکە بۆ ئەنجامدانی پشکنینی ڕاستەوخۆ لەلایەن پزیشکانی شارەزامان.";
+          fallbackReplyText = "سەردانی بەشی Clinics بکە بۆ لقی شەقامی گوڵان و بەختیاری لە هەولێر! بۆ ڕێنمایی دروستتر، تکایە سەردانمان بکە بۆ ئەنجامدانی پشکنینی ڕاستەوخۆ لەلایەن پزیشکانی شەریف و لێهاتوومان.";
         } else {
           fallbackReplyText = "بەخێربێیت بۆ Hala Dent Support! سەردانی بەشی Clinics بکە بۆ لقی گوڵان و بەختیاری، بەشی Doctors بۆ دکتۆرەکان، و بەشی Services بۆ نرخەکان. پێشنیارەکان جێی پشکنینی پزیشکی ناگرنەوە.";
         }
@@ -919,6 +1365,7 @@ export default function App() {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setChatMessages((prev) => [...prev, botReply]);
+      saveBotReplyToDb(fallbackReplyText);
     }
 
     setIsBotTyping(false);
@@ -1069,12 +1516,17 @@ export default function App() {
         <div className="flex gap-2 overflow-x-auto hide-scrollbar select-none pt-0.5">
           {['Nearby', 'Emergency', 'Orthodontic', 'Cosmetics'].map((tag) => {
             const isActive = selectedClinicCategory === tag;
+            const translatedTag = lang === 'ar'
+              ? { 'Nearby': 'القريبة', 'Emergency': 'الطوارئ السريعة', 'Orthodontic': 'التقويم', 'Cosmetics': 'التجميل' }[tag]
+              : lang === 'ku'
+              ? { 'Nearby': 'لەم نزیکانە', 'Emergency': 'فریاگوزاری خێرا', 'Orthodontic': 'ڕاستکردنەوە ددان', 'Cosmetics': 'جوانکاری' }[tag]
+              : tag;
             return (
               <button
                 key={tag}
                 onClick={() => {
                   setSelectedClinicCategory(tag);
-                  showToast(`Selected Category: ${tag}`);
+                  showToast(lang === 'ar' ? `تم اختيار القسم: ${translatedTag}` : lang === 'ku' ? `بەش دیاریکرا: ${translatedTag}` : `Selected Category: ${tag}`);
                 }}
                 className={`flex-none font-extrabold text-[11px] px-4 py-2 rounded-full border transition-all active-scale ${
                   isActive 
@@ -1082,7 +1534,7 @@ export default function App() {
                     : 'bg-white text-slate-500 border-slate-200/60 hover:bg-slate-50'
                 }`}
               >
-                {tag}
+                {translatedTag}
               </button>
             );
           })}
@@ -1092,16 +1544,16 @@ export default function App() {
         <div className="space-y-4">
           {filteredByTag.map((cl, idx) => {
             // Determine clinical tag
-            let tagLabel = "Open";
+            let tagLabel = lang === 'en' ? 'Open' : lang === 'ar' ? 'مفتوح الآن' : 'کراوەیە';
             let tagColorClass = "bg-emerald-50 dark:bg-emerald-950/25 text-[#006b5a] dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40 font-bold";
             if (cl.id === 2 || cl.status_type === 'emergency') {
-              tagLabel = "Emergency Only";
+              tagLabel = lang === 'en' ? 'Emergency Only' : lang === 'ar' ? 'طوارئ فقط' : 'تەنها بۆ فریاگوزاری';
               tagColorClass = "bg-rose-50 dark:bg-rose-950/25 text-rose-700 dark:text-rose-400 border-rose-100 dark:border-rose-900/40";
             } else if (cl.id === 3 || cl.status_type === 'closing_soon') {
-              tagLabel = "Closes Soon";
+              tagLabel = lang === 'en' ? 'Closes Soon' : lang === 'ar' ? 'يغلق قريباً' : 'بەم زووانە دادەخرێت';
               tagColorClass = "bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/40";
             } else if (cl.status_type === 'closed') {
-              tagLabel = "Closed";
+              tagLabel = lang === 'en' ? 'Closed' : lang === 'ar' ? 'مغلق' : 'داخراوە';
               tagColorClass = "bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-450 border-slate-200 dark:border-slate-700/60";
             }
 
@@ -1150,17 +1602,17 @@ export default function App() {
                       onClick={() => {
                         const firstDocOfClinic = dentistsTable.find(d => d.clinic_id === cl.id) || dentistsTable[0];
                         setSelectedDoctorForBooking(firstDocOfClinic);
-                        showToast(`Opened Booking with Doctor of ${cl.name}`);
+                        showToast(lang === 'ar' ? `تم فتح حجز الموعد مع الطبيب لفرع ${cl.name}` : lang === 'ku' ? `سیستمی نۆرە دیاریکرا لە لقی ${cl.name}` : `Opened Booking with Doctor of ${cl.name}`);
                       }}
                       className="flex-1 bg-[#0058bc] hover:bg-[#00479e] text-white font-extrabold text-[11px] py-2.5 rounded-full shadow-md active-scale transition-colors text-center"
                     >
-                      Book Now
+                      {lang === 'en' ? 'Book Now' : lang === 'ar' ? 'احجز الآن' : 'ئێستا نۆرە دیاری بکە'}
                     </button>
                     <button
-                      onClick={() => showToast(`Calibrated Driving Route for GPS: ${cl.name} (${cl.address}). Distance: ${cl.id === 1 ? '1.2km' : cl.id === 2 ? '2.4km' : '3.8km'}`)}
+                      onClick={() => showToast(lang === 'ar' ? `تم تحديد موقع GPS لفرع: ${cl.name} (${cl.address})` : lang === 'ku' ? `نەخشە پیشاندرا بۆ: ${cl.name} (${cl.address})` : `Calibrated Driving Route for GPS: ${cl.name} (${cl.address})`)}
                       className="flex-1 bg-white dark:bg-slate-900 border border-[#006b5a] text-[#006b5a] dark:text-[#00ab8a] hover:bg-[#006b5a]/5 font-extrabold text-[11px] py-2.5 rounded-full active-scale transition-all text-center"
                     >
-                      View Map
+                      {lang === 'en' ? 'View Map' : lang === 'ar' ? 'عرض على الخريطة' : 'پیشاندانی نەخشە'}
                     </button>
                   </div>
                 </div>
@@ -1599,7 +2051,7 @@ export default function App() {
                                       onClick={() => { setSelectedDoctorForBooking(doc); }}
                                       className="mt-2 w-full py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-950/50 text-[#0058bc] dark:text-blue-400 font-extrabold text-[9px] rounded-lg transition-colors"
                                     >
-                                      Book Now
+                                      {lang === 'en' ? 'Book Now' : lang === 'ar' ? 'احجز الآن' : 'نۆرە ببڕە'}
                                     </button>
                                   </div>
                                 ))}
@@ -1616,8 +2068,8 @@ export default function App() {
                                 >
                                   <div className="relative h-28 rounded-2xl overflow-hidden">
                                     <img src={cl.cover_image} alt={cl.name} className="w-full h-full object-cover" />
-                                    <span className="absolute top-2 right-2 bg-emerald-500 text-white font-bold text-[8px] px-2 py-0.5 rounded-full uppercase">
-                                      Licensed Clinic
+                                    <span className="absolute top-2 right-2 bg-emerald-500 text-white font-bold text-[8px] px-2 py-0.5 rounded-full uppercase font-mono">
+                                      {lang === 'en' ? 'Licensed Clinic' : lang === 'ar' ? 'عيادة معتمدة' : 'کلینیکی فەرمی'}
                                     </span>
                                   </div>
                                   <div className="space-y-1">
@@ -1894,14 +2346,16 @@ export default function App() {
                             {/* 4 Quick Launch Quadrants */}
                             <div className="grid grid-cols-2 gap-3 pb-1">
                               <button
-                                onClick={() => { setActiveTab('doctors'); showToast('Loaded doctors list for direct select booking'); }}
+                                onClick={() => { setActiveTab('doctors'); showToast(lang === 'ar' ? 'تم جلب تخصصات الأطباء للحجز المباشر' : lang === 'ku' ? 'لیستی پزیشکان ئامادەکرا بۆ دیاریکردنی تۆرە' : 'Loaded doctors list for direct select booking'); }}
                                 className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
-                                <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-1.5 shrink-0 text-blue-600 dark:text-blue-400 font-mono">
+                                <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-1.5 shrink-0 text-blue-600 dark:text-blue-400">
                                   <Calendar className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Book Appointment</span>
-                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">12 Specialists</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">
+                                  {lang === 'en' ? 'Book Appointment' : lang === 'ar' ? 'حجز موعد' : 'بڕینی نۆرە'}
+                                </span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">12 {lang === 'en' ? 'Specialists' : lang === 'ar' ? 'أخصائياً' : 'پسپۆڕ'}</span>
                               </button>
 
                               <button
@@ -1909,10 +2363,12 @@ export default function App() {
                                 className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/70 dark:border-slate-800/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-3xs flex flex-col items-center justify-center text-center active-scale transition-all"
                               >
                                 <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center mb-1.5 shrink-0 text-emerald-600 dark:text-emerald-400">
-                                  <FileText className="w-4 h-4 font-mono" />
+                                  <FileText className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">My Medical Records</span>
-                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">2 Active Rows</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">
+                                  {lang === 'en' ? 'My Medical Records' : lang === 'ar' ? 'ملفاتي الطبية' : 'تۆمارەکانم'}
+                                </span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">2 {lang === 'en' ? 'Active Records' : lang === 'ar' ? 'سجلات' : 'تۆمار'}</span>
                               </button>
 
                               <button
@@ -1922,8 +2378,10 @@ export default function App() {
                                 <div className="w-8 h-8 rounded-full bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center mb-1.5 shrink-0 text-purple-600 dark:text-purple-400">
                                   <MessageCircle className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Chat Assistants</span>
-                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">Instant Bot</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">
+                                  {lang === 'en' ? 'Chat Assistants' : lang === 'ar' ? 'المساعد الذكي' : 'چاتی یاریدەدەر'}
+                                </span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">Instant AI</span>
                               </button>
 
                               <button
@@ -1933,7 +2391,9 @@ export default function App() {
                                 <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center mb-1.5 shrink-0 text-amber-600 dark:text-amber-400">
                                   <HelpCircle className="w-4 h-4 font-mono" />
                                 </div>
-                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">Send Inquiry</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-snug font-sans">
+                                  {lang === 'en' ? 'Send Inquiry' : lang === 'ar' ? 'إرسال استفسار' : 'ناردنی پرسیار'}
+                                </span>
                                 <span className="text-[8px] text-slate-400 dark:text-slate-400 font-semibold mt-0.5 font-mono">Feedback Desk</span>
                               </button>
                             </div>
@@ -1942,7 +2402,7 @@ export default function App() {
                             <div className="bg-white dark:bg-slate-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-3xs space-y-2.5">
                               <div className="flex justify-between items-center select-none animate-fade-in">
                                 <span className="text-[9px] text-[#006b5a] dark:text-emerald-400 font-extrabold uppercase font-mono">
-                                  Active Appointment Schedule
+                                  {lang === 'en' ? 'Active Appointment Schedule' : lang === 'ar' ? 'جدول المواعيد النشط' : 'خشتەی نۆرە چالاکەکان'}
                                 </span>
                                 <span className="text-[9px] text-slate-400 dark:text-slate-400 font-extrabold">{appointmentsTable.length} Booked</span>
                               </div>
@@ -2004,25 +2464,29 @@ export default function App() {
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
                       {lang === 'en' 
                         ? 'Meet our team of world-class dental professionals dedicated to your smile and oral health. Every doctor is certified by the regional health ministry with verified active practice licenses.'
-                        : 'تعرف على نخبة من الأطباء والاستشاريين الملتزمين برعاية صحة وجمال ابتسامتك بأعلى معايير الدقة والتعقيم.'}
+                        : lang === 'ar'
+                        ? 'تعرف على نخبة من الأطباء والاستشاريين الملتزمين برعاية صحة وجمال ابتسامتك بأعلى معايير الدقة والتعقيم.'
+                        : 'ئاشنا بە تیمی دکتۆرە لێهاتووەکانمان کە تەرخانکراون بۆ پاراستنی تەندروستی ددان و زەردەخەنەکەت.'}
                     </p>
 
                     {/* Interactive Filter row styled select block */}
                     <div className="space-y-1">
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-black font-mono tracking-wider px-1">Filter Specialty</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-black font-mono tracking-wider px-1">
+                        {lang === 'en' ? 'Filter Specialty' : lang === 'ar' ? 'تصفية حسب التخصص' : 'پاڵاوتنی پسپۆڕی'}
+                      </span>
                       <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1 select-none">
                         {[
-                          { key: '', label: 'All Specialties' },
-                          { key: 'Orthodontist', label: 'Orthodontists' },
-                          { key: 'Surgeon', label: 'Oral Surgeons' },
-                          { key: 'General', label: 'General Care' },
-                          { key: 'Cosmetic', label: 'Cosmetics' }
+                          { key: '', label: lang === 'en' ? 'All Specialties' : lang === 'ar' ? 'جميع التخصصات' : 'هەموو پسپۆڕییەکان' },
+                          { key: 'Orthodontist', label: lang === 'en' ? 'Orthodontists' : lang === 'ar' ? 'أخصائي تقويم' : 'ڕاستکردنەوە ددان' },
+                          { key: 'Surgeon', label: lang === 'en' ? 'Oral Surgeons' : lang === 'ar' ? 'جراحي الفم والفكين' : 'نەشتەرگەری دەم' },
+                          { key: 'General', label: lang === 'en' ? 'General Care' : lang === 'ar' ? 'علاج عام وقائي' : 'چاودێری گشتی' },
+                          { key: 'Cosmetic', label: lang === 'en' ? 'Cosmetics' : lang === 'ar' ? 'تجميل الأسنان' : 'جوانکاری ددان' }
                         ].map((p) => (
                           <button
                             key={p.key}
                             onClick={() => {
                               setActiveDoctorFilter(p.key);
-                              showToast(`Displaying ${p.label}`);
+                              showToast(lang === 'ar' ? `عرض الأطباء لـ ${p.label}` : lang === 'ku' ? `پیشاندانی پزیشکانی ${p.label}` : `Displaying ${p.label}`);
                             }}
                             className={`flex-none font-bold text-[10.5px] px-3.5 py-1.5 rounded-full transition-all active-scale border z-10 ${
                               activeDoctorFilter === p.key 
@@ -2042,18 +2506,34 @@ export default function App() {
                         const isFav = favoritesTable.some(f => f.dentist_id === doc.id);
                         
                         // Custom features to display Screen 5 metadata bullet points
-                        let expYears = doc.years_of_experience ? `${doc.years_of_experience} yrs exp` : "12 yrs exp";
-                        let specialBadges = doc.certification ? [doc.certification, "Licensed Practice"] : ["Board Certified", "Invisalign Gold"];
+                        const yrsLabel = lang === 'en' ? 'yrs exp' : lang === 'ar' ? 'سنوات خبرة' : 'ساڵ ئەزموونی';
+                        let expYears = doc.years_of_experience ? `${doc.years_of_experience} ${yrsLabel}` : `12 ${yrsLabel}`;
+                        let specialBadges = doc.certification ? [
+                          doc.certification, 
+                          lang === 'en' ? 'Licensed Practice' : lang === 'ar' ? 'ممارسة مرخصة' : 'مۆڵەتی فەرمی'
+                        ] : [
+                          lang === 'en' ? 'Board Certified' : lang === 'ar' ? 'بورد طبي معتمد' : 'بۆردی متمانەپێکراو', 
+                          lang === 'en' ? 'Invisalign Gold' : lang === 'ar' ? 'تقويم إنفزلاين الذهبي' : 'ئینڤیزلاین زێڕین'
+                        ];
                         if (!doc.years_of_experience && !doc.certification) {
                           if (doc.id === 1) {
-                            expYears = "15 yrs exp";
-                            specialBadges = ["Chief Implantologist", "Dental Arts Tutor"];
+                            expYears = `15 ${yrsLabel}`;
+                            specialBadges = [
+                              lang === 'en' ? 'Chief Implantologist' : lang === 'ar' ? 'رئيس أطباء الزراعة' : 'سەرۆکی پزیشکی چاندن ددان', 
+                              lang === 'en' ? 'Dental Arts Tutor' : lang === 'ar' ? 'مدرس علوم الأسنان' : 'ماستەرسی ددانسازی'
+                            ];
                           } else if (doc.id === 2) {
-                            expYears = "8 yrs exp";
-                            specialBadges = ["Pediatric Specialist", "Painless Care"];
+                            expYears = `8 ${yrsLabel}`;
+                            specialBadges = [
+                              lang === 'en' ? 'Pediatric Specialist' : lang === 'ar' ? 'أخصائي طب أطفال' : 'پسپۆڕی چارەسەری منداڵان', 
+                              lang === 'en' ? 'Painless Care' : lang === 'ar' ? 'علاج بدون ألم' : 'چارەسەری پێشکەوتوو بێ ئازار'
+                            ];
                           } else {
-                            expYears = "10 yrs exp";
-                            specialBadges = ["General Practitioner", "3D Scan Expert"];
+                            expYears = `10 ${yrsLabel}`;
+                            specialBadges = [
+                              lang === 'en' ? 'General Practitioner' : lang === 'ar' ? 'ممارس عام' : 'پسپۆڕی گشتی ددان', 
+                              lang === 'en' ? '3D Scan Expert' : lang === 'ar' ? 'خبير المسح ثلاثي الأبعاد' : 'شیکارکەری سکانی 3D'
+                            ];
                           }
                         }
 
@@ -2228,7 +2708,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Services detailed files matching selected filters */}
+                    {/* Services detailed list matching selected filters */}
                     <div className="space-y-3">
                       {filteredServices.map((srv) => (
                         <div
@@ -2266,74 +2746,196 @@ export default function App() {
 
                 {/* 4. VIEW TAB: LIVE CHAT ASSISTANT CHATROOM */}
                 {activeTab === 'chat' && (
-                  <div className="animate-fade-in p-4 flex flex-col h-[525px] overflow-hidden">
-                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-950/25 border border-blue-200 dark:border-blue-900/30 px-3 py-2 rounded-2xl mb-3 shrink-0">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Support Representative Active</span>
+                  <div className="relative animate-fade-in p-4 flex flex-col h-[525px] overflow-hidden" id="chat-tab-container">
+                    {/* Header bar layout without Support Representative Active as requested */}
+                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-950/25 border border-blue-200 dark:border-blue-900/30 px-3 py-2 rounded-2xl mb-3 shrink-0" id="chat-header-bar">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Hala Dent AI Assistant</span>
                       </div>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-400">Response time: &lt; 2 minutes</span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[9px] text-slate-400 dark:text-slate-400">Response time: &lt; 2 mins</span>
+                        {/* Elegant fly small icon toggle button */}
+                        <button
+                          onClick={() => {
+                            if (showGrokSetup) {
+                              setShowGrokSetup(false);
+                            } else {
+                              setShowPasswordPrompt(true);
+                              setPasswordInput("");
+                              setPasswordError("");
+                            }
+                          }}
+                          className="relative p-1.5 rounded-full hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 shadow-3xs transition-all active-scale"
+                          title="Configure AI Keys & Learning Text"
+                          id="ai-config-fly-button"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          {(grokKeyInput || aiLearningText) && (
+                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full border border-white dark:border-slate-950" />
+                          )}
+                        </button>
+                      </div>
                     </div>
 
-                    {/* AionLabs / Grok Setup Configuration panel */}
-                    <div className="mb-3 shrink-0 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/70 dark:bg-slate-900/40">
-                      <button
-                        onClick={() => setShowGrokSetup(!showGrokSetup)}
-                        className="w-full flex justify-between items-center px-3.5 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-all select-none focus:outline-none"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Settings className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Custom AI Mode Setup (AionLabs / Grok)</span>
-                        </div>
-                        <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono tracking-wide border border-slate-300/40 dark:border-slate-700/50">
-                          {(() => {
-                            const key = localStorage.getItem("grok_api_key");
-                            if (!key) return "Default Mode";
-                            return key.startsWith("alv2_") ? "AionLabs Active" : "Grok Active";
-                          })()}
-                        </span>
-                      </button>
-                      
-                      {showGrokSetup && (
-                        <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/20 space-y-2.5 animate-slide-up">
-                          <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal">
-                            Provide your custom AionLabs.ai API Key (starts with <code className="font-mono text-blue-600 dark:text-blue-400">alv2_</code>) or X.AI Grok API Key. Interactions will securely route through our server proxy to AionLabs (aion-labs/aion-2.5) or Grok models. Leave blank to default back to Gemini.
-                          </p>
-                          <div className="flex gap-2">
+                    {/* Password Prompt Lock Screen Screen Overlay */}
+                    {showPasswordPrompt && (
+                      <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4" id="chat-password-lock-overlay">
+                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 w-full max-w-[280px] text-center space-y-3.5 animate-slide-up">
+                          <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center mx-auto">
+                            <Lock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Administrator Access</h4>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Enter access password to configure AI receptionist settings</p>
+                          </div>
+                          <div className="space-y-1.5">
                             <input
                               type="password"
-                              placeholder="Insert alv2_... or xai-..."
-                              value={grokKeyInput}
-                              onChange={(e) => setGrokKeyInput(e.target.value)}
-                              className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="Enter password..."
+                              value={passwordInput}
+                              onChange={(e) => {
+                                setPasswordInput(e.target.value);
+                                setPasswordError("");
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handlePasswordSubmit();
+                                }
+                              }}
+                              className="w-full text-center px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-950 dark:text-white rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold tracking-widest"
+                              autoFocus
+                              id="admin-pass-input"
                             />
+                            {passwordError && (
+                              <p className="text-[9px] text-rose-500 font-semibold" id="admin-pass-error">{passwordError}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
                             <button
                               onClick={() => {
-                                const trimmed = grokKeyInput.trim();
-                                if (trimmed) {
-                                  localStorage.setItem("grok_api_key", trimmed);
-                                  if (trimmed.startsWith("alv2_")) {
-                                    showToast("AionLabs AI Mode Enabled!");
-                                  } else {
-                                    showToast("Custom Grok AI Mode Enabled!");
-                                  }
-                                } else {
-                                  localStorage.removeItem("grok_api_key");
-                                  showToast("Default AI Mode Restored.");
-                                }
-                                setShowGrokSetup(false);
+                                setShowPasswordPrompt(false);
+                                setPasswordInput("");
+                                setPasswordError("");
                               }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-1.5 px-4 rounded-xl active-scale"
+                              className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] py-1.5 rounded-xl transition-all active-scale"
+                              id="btn-cancel-admin-pass"
                             >
-                              Save
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handlePasswordSubmit}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-1.5 rounded-xl transition-all active-scale"
+                              id="btn-submit-admin-pass"
+                            >
+                              Unlock
                             </button>
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+
+                    {/* AI Configuration Overlay Modal (Autohides, doesn't waste layout space) */}
+                    {showGrokSetup && (
+                      <div className="absolute top-[52px] left-4 right-4 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-850 shadow-xl p-4.5 space-y-3.5 shrink-0 animate-slide-up" id="ai-custom-learning-overlay">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800/80">
+                          <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <Settings className="w-3.5 h-3.5 text-blue-500" />
+                            AI receptionist Customizer & Learning
+                          </h3>
+                          <button
+                            onClick={() => setShowGrokSetup(false)}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-350 px-2 py-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all"
+                            id="close-ai-setup-override"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* AI Learning & Knowledge Field */}
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                              AI Learning Text & Custom Knowledge Base
+                            </label>
+                            <textarea
+                              rows={4}
+                              placeholder="Type or paste custom facts here to teach the chatbot (e.g. Orthodontic clear aligners are $1500, we have special cosmetic packages, or Dr. Sarah schedules on weekends)..."
+                              value={aiLearningText}
+                              onChange={(e) => setAiLearningText(e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-820 text-slate-950 dark:text-white rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium resize-none leading-normal"
+                              id="ai-knowledge-textarea"
+                            />
+                            <p className="text-[8px] text-slate-400 dark:text-slate-455 mt-1 leading-normal">
+                              The chatbot automatically analyzes and incorporates this plain-text knowledge into its live conversational answers!
+                            </p>
+                          </div>
+
+                          {/* API Key field */}
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                              Custom Provider Credentials / API Key
+                            </label>
+                            <input
+                              type="password"
+                              placeholder="Insert optional: github_pat_..., csk-..., alv2_..., or Grok key"
+                              value={grokKeyInput}
+                              onChange={(e) => setGrokKeyInput(e.target.value)}
+                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-820 text-slate-950 dark:text-white rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              id="ai-apikey-input"
+                            />
+                            <p className="text-[8px] text-slate-400 dark:text-slate-455 mt-0.5 leading-normal">
+                              Supports optional external keys (starts with pat, csk-, alv2_, etc.) to route routing cleanly.
+                            </p>
+                          </div>
+
+                          <div className="flex gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                            <button
+                              onClick={() => {
+                                const trimmedKey = grokKeyInput.trim();
+                                const trimmedText = aiLearningText.trim();
+                                
+                                if (trimmedKey) {
+                                  localStorage.setItem("grok_api_key", trimmedKey);
+                                } else {
+                                  localStorage.removeItem("grok_api_key");
+                                }
+
+                                if (trimmedText) {
+                                  localStorage.setItem("ai_learning_text", trimmedText);
+                                } else {
+                                  localStorage.removeItem("ai_learning_text");
+                                }
+
+                                showToast("AI receptionist successfully trained with custom parameters!");
+                                setShowGrokSetup(false);
+                              }}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-1.5 rounded-xl transition-all active-scale"
+                              id="save-ai-setup-button"
+                            >
+                              Save & Train AI
+                            </button>
+                            <button
+                              onClick={() => {
+                                setGrokKeyInput("");
+                                setAiLearningText("");
+                                localStorage.removeItem("grok_api_key");
+                                localStorage.removeItem("ai_learning_text");
+                                showToast("AI custom knowledge and credentials restored to default.");
+                                setShowGrokSetup(false);
+                              }}
+                              className="px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] py-1.5 rounded-xl transition-all active-scale"
+                              id="reset-ai-setup-button"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Simulated Message stream */}
-                    <div className="flex-1 overflow-y-auto space-y-3 pb-3 pr-1 hide-scrollbar">
+                    <div className="flex-1 overflow-y-auto space-y-3 pb-3 pr-1 hide-scrollbar" id="simulated-chat-stream">
                       {chatMessages.map((msg, i) => (
                         <div
                           key={i}
@@ -2357,24 +2959,47 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Preconfigured smart clinical queries */}
-                    <div className="py-2 flex flex-wrap gap-1.5 shrink-0 select-none">
+                    {/* Preconfigured smart clinical queries (increased to 5 items) */}
+                    <div className="py-2 flex flex-wrap gap-1.5 shrink-0 select-none max-h-[85px] overflow-y-auto" id="clinical-queries-row">
                       <button
                         onClick={() => handleSendMessage("Do you have active laser teeth whitening discounts available?")}
-                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full"
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full active-scale"
+                        id="q-whitening-discount"
                       >
-                        🏷️ Discount Pricing?
+                        🏷️ Whitening Promo?
                       </button>
                       <button
-                        onClick={() => handleSendMessage("How much do orthodontic aligners cost in Erbil?")}
-                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full"
+                        onClick={() => handleSendMessage("How much do orthodontic clear aligners cost in Erbil?")}
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full active-scale"
+                        id="q-ortho-aligners"
                       >
-                        🦷 Aligner treatment?
+                        🦷 Orthodontic Aligners
+                      </button>
+                      <button
+                        onClick={() => handleSendMessage("What should I do if I suffer from intensive sudden pain or an emergency toothache?")}
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full active-scale"
+                        id="q-emergency-relief"
+                      >
+                        🚨 Pain Emergency
+                      </button>
+                      <button
+                        onClick={() => handleSendMessage("Where are your Erbil branches located (Gulan and Bakhtyari details)?")}
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full active-scale"
+                        id="q-branches-info"
+                      >
+                        📍 Clinic Locations
+                      </button>
+                      <button
+                        onClick={() => handleSendMessage("How much is the initial dental consultation fee at Hala Dent?")}
+                        className="bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 font-bold text-[9px] py-1 px-2.5 rounded-full active-scale"
+                        id="q-consultation-fee"
+                      >
+                        💼 Consultation Fee
                       </button>
                     </div>
 
                     {/* Input control block */}
-                    <div className="flex gap-2 shrink-0 pt-1 pb-1">
+                    <div className="flex gap-2 shrink-0 pt-1 pb-1" id="chat-input-row">
                       <input
                         type="text"
                         placeholder="Ask about aligners, emergency care, prices..."
@@ -2382,10 +3007,12 @@ export default function App() {
                         onChange={(e) => setChatInquiry(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                         className="flex-1 px-3.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs"
+                        id="chat-text-input"
                       />
                       <button
                         onClick={() => handleSendMessage()}
                         className="bg-blue-600 text-white p-2 rounded-xl active-scale"
+                        id="chat-send-icon-button"
                       >
                         <Send className="w-4 h-4" />
                       </button>
